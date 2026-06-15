@@ -79,6 +79,7 @@ final class RoundViewModel: ObservableObject {
             var updatedRound = round
             updatedRound.isFinished = true
             self.round = updatedRound
+            endVegasLiveActivity()
         } catch {
             showError("Failed to finish round: \(error.localizedDescription)")
         }
@@ -113,6 +114,7 @@ final class RoundViewModel: ObservableObject {
         defer { isLoading = false }
         do {
             try await CloudKitService.shared.savePlayers(players)
+            startVegasLiveActivity()
         } catch {
             showError("Failed to save players: \(error.localizedDescription)")
         }
@@ -132,6 +134,7 @@ final class RoundViewModel: ObservableObject {
         } else {
             scores.append(score)
         }
+        updateVegasLiveActivity()
 
         do {
             try await CloudKitService.shared.saveScore(score)
@@ -219,6 +222,17 @@ final class RoundViewModel: ObservableObject {
         pollingTask = nil
     }
 
+    func returnHomeForNewRound() {
+        endVegasLiveActivity()
+        stopPolling()
+        round = nil
+        players = []
+        scores = []
+        errorMessage = nil
+        showError = false
+        isLoading = false
+    }
+
     func refreshPlayersAndScores() async {
         guard let round else { return }
         do {
@@ -227,6 +241,7 @@ final class RoundViewModel: ObservableObject {
             let (p, s) = try await (fetchedPlayers, fetchedScores)
             self.players = p
             self.scores  = s
+            startVegasLiveActivity()
         } catch {
             // Silently swallow polling errors to avoid spamming the user
         }
@@ -278,25 +293,38 @@ final class RoundViewModel: ObservableObject {
         return ["Team 1": "\(t1Wins) holes", "Team 2": "\(t2Wins) holes"]
     }
 
-    private func computeVegas() -> [String: String] {
-        guard let round else { return [:] }
+    private func vegasTeamTotals() -> (team1Diff: Int, team2Diff: Int, team1Raw: Int, team2Raw: Int) {
+        guard let round else { return (0, 0, 0, 0) }
         let holes = round.holeList
         let team1 = players.filter { $0.teamNumber == 1 }.sorted { $0.name < $1.name }
         let team2 = players.filter { $0.teamNumber == 2 }.sorted { $0.name < $1.name }
-        var t1Total = 0, t2Total = 0
-
+        var t1Diff = 0, t2Diff = 0, t1Raw = 0, t2Raw = 0
         for hole in holes {
             let t1Scores = team1.compactMap { grossScore(playerID: $0.id, hole: hole.number) }.sorted()
             let t2Scores = team2.compactMap { grossScore(playerID: $0.id, hole: hole.number) }.sorted()
             guard t1Scores.count == 2, t2Scores.count == 2 else { continue }
-            // Vegas: lower score is tens digit, higher is ones digit
             let t1Val = t1Scores[0] * 10 + t1Scores[1]
             let t2Val = t2Scores[0] * 10 + t2Scores[1]
-            if t1Val < t2Val { t1Total += (t2Val - t1Val) }
-            else if t2Val < t1Val { t2Total += (t1Val - t2Val) }
+            t1Raw += t1Val
+            t2Raw += t2Val
+            if t1Val < t2Val { t1Diff += (t2Val - t1Val) }
+            else if t2Val < t1Val { t2Diff += (t1Val - t2Val) }
         }
+        return (t1Diff, t2Diff, t1Raw, t2Raw)
+    }
 
-        return ["Team 1": "+\(t1Total)", "Team 2": "+\(t2Total)"]
+    private func computeVegas() -> [String: String] {
+        let t = vegasTeamTotals()
+        let net = t.team1Diff - t.team2Diff
+        let standing: String
+        if net > 0      { standing = "Team 1 +\(net)" }
+        else if net < 0 { standing = "Team 2 +\(abs(net))" }
+        else            { standing = "Even" }
+        return [
+            "Standing":     standing,
+            "Team 1 Total": t.team1Raw > 0 ? "\(t.team1Raw)" : "-",
+            "Team 2 Total": t.team2Raw > 0 ? "\(t.team2Raw)" : "-"
+        ]
     }
 
     private func computeSixes() -> [String: String] {
@@ -328,5 +356,57 @@ final class RoundViewModel: ObservableObject {
         }
 
         return points.mapValues { "\($0) pts" }
+    }
+
+    // MARK: - Vegas Live Activity
+
+    private func vegasActivityState() -> VegasLiveActivityAttributes.ContentState? {
+        guard #available(iOS 16.1, *), let round else { return nil }
+        let totals = vegasTeamTotals()
+        let latestHole = scores.filter { $0.grossStrokes > 0 }.map { $0.holeNumber }.max() ?? 1
+        let completed = round.holeList.filter { hole in
+            !players.isEmpty && players.allSatisfy { grossScore(playerID: $0.id, hole: hole.number) != nil }
+        }.count
+        return VegasLiveActivityAttributes.ContentState(
+            team1Points: totals.team1Diff,
+            team2Points: totals.team2Diff,
+            currentHole: latestHole,
+            holesCompleted: completed
+        )
+    }
+
+    private func vegasActivityAttributes() -> VegasLiveActivityAttributes? {
+        guard #available(iOS 16.1, *), let round else { return nil }
+        let t1 = players.filter { $0.teamNumber == 1 }.map { $0.name }.joined(separator: " & ")
+        let t2 = players.filter { $0.teamNumber == 2 }.map { $0.name }.joined(separator: " & ")
+        guard !t1.isEmpty, !t2.isEmpty else { return nil }
+        return VegasLiveActivityAttributes(
+            team1Players: t1,
+            team2Players: t2,
+            totalHoles: round.holeList.count
+        )
+    }
+
+    func startVegasLiveActivity() {
+        guard #available(iOS 16.1, *),
+              round?.format == .vegas,
+              let attrs = vegasActivityAttributes(),
+              let state = vegasActivityState() else { return }
+        VegasLiveActivityManager.shared.start(attributes: attrs, initialState: state)
+    }
+
+    func updateVegasLiveActivity() {
+        guard #available(iOS 16.1, *),
+              round?.format == .vegas,
+              let state = vegasActivityState() else { return }
+        Task { await VegasLiveActivityManager.shared.update(state: state) }
+    }
+
+    func endVegasLiveActivity() {
+        guard #available(iOS 16.1, *), round?.format == .vegas else { return }
+        let finalState = vegasActivityState() ?? VegasLiveActivityAttributes.ContentState(
+            team1Points: 0, team2Points: 0, currentHole: 1, holesCompleted: 0
+        )
+        Task { await VegasLiveActivityManager.shared.end(finalState: finalState) }
     }
 }

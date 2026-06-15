@@ -15,6 +15,19 @@ struct RoundReviewView: View {
                         LabeledContent("Rating / Slope", value: String(format: "%.1f / %d", round.courseRating, round.slopeRating))
                     }
 
+                    Section {
+                        Button {
+                            dismiss()
+                            vm.returnHomeForNewRound()
+                        } label: {
+                            Label("Start Next Round", systemImage: "house.fill")
+                                .font(.headline)
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .tint(.green)
+                    }
+
                     if round.format != .strokePlay {
                         gameResultsSection(round: round)
                     }

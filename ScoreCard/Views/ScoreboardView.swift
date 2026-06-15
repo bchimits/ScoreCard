@@ -141,6 +141,12 @@ struct ScoreboardView: View {
                     playerRow(player)
                     Divider()
                 }
+
+                if vm.round?.format == .vegas {
+                    vegasTeamRow(teamNumber: 1)
+                    Divider()
+                    vegasTeamRow(teamNumber: 2)
+                }
             }
             .padding(.horizontal, 4)
         }
@@ -167,6 +173,91 @@ struct ScoreboardView: View {
                 .foregroundStyle(entry.map { toParColor($0.toPar) } ?? .primary)
         }
         .padding(.vertical, 8)
+    }
+
+    private func vegasTeamRow(teamNumber: Int) -> some View {
+        HStack(spacing: 0) {
+            Text("Team \(teamNumber)")
+                .font(.caption.bold())
+                .lineLimit(1)
+                .frame(width: 90, alignment: .leading)
+                .padding(.horizontal, 6)
+
+            ForEach(vm.round?.holeList ?? []) { hole in
+                Text(vegasScoreText(teamNumber: teamNumber, holeNumber: hole.number))
+                    .font(.caption.bold())
+                    .foregroundStyle(vegasScoreColor(teamNumber: teamNumber, holeNumber: hole.number))
+                    .frame(width: 34)
+            }
+
+            Text(vegasTeamTotalText(teamNumber: teamNumber))
+                .font(.caption.bold())
+                .foregroundStyle(vegasTeamTotalColor(teamNumber: teamNumber))
+                .frame(width: 40)
+        }
+        .padding(.vertical, 8)
+        .background(Color.green.opacity(0.08))
+    }
+
+    private func vegasScoreText(teamNumber: Int, holeNumber: Int) -> String {
+        guard let score = vegasScoreValue(teamNumber: teamNumber, holeNumber: holeNumber) else { return "-" }
+        return "\(score)"
+    }
+
+    private func vegasScoreColor(teamNumber: Int, holeNumber: Int) -> Color {
+        guard let teamScore = vegasScoreValue(teamNumber: teamNumber, holeNumber: holeNumber),
+              let opposingScore = vegasScoreValue(teamNumber: opposingTeamNumber(for: teamNumber), holeNumber: holeNumber) else {
+            return .primary
+        }
+
+        if teamScore == opposingScore { return .primary }
+        return teamScore < opposingScore ? .green : .red
+    }
+
+    private func vegasScoreValue(teamNumber: Int, holeNumber: Int) -> Int? {
+        let scores = vegasPlayers(teamNumber: teamNumber)
+            .compactMap { vm.grossScore(playerID: $0.id, hole: holeNumber) }
+            .sorted()
+
+        guard scores.count == 2 else { return nil }
+        return scores[0] * 10 + scores[1]
+    }
+
+    private func vegasTeamTotalText(teamNumber: Int) -> String {
+        guard let total = vegasTeamTotalValue(teamNumber: teamNumber) else { return "-" }
+        return "\(total)"
+    }
+
+    private func vegasTeamTotalColor(teamNumber: Int) -> Color {
+        guard let teamTotal = vegasTeamTotalValue(teamNumber: teamNumber),
+              let opposingTotal = vegasTeamTotalValue(teamNumber: opposingTeamNumber(for: teamNumber)) else {
+            return .primary
+        }
+
+        if teamTotal == opposingTotal { return .primary }
+        return teamTotal < opposingTotal ? .green : .red
+    }
+
+    private func vegasTeamTotalValue(teamNumber: Int) -> Int? {
+        guard let holes = vm.round?.holeList else { return nil }
+        let values = holes.compactMap { vegasScoreValue(teamNumber: teamNumber, holeNumber: $0.number) }
+        guard !values.isEmpty else { return nil }
+        return values.reduce(0, +)
+    }
+
+    private func opposingTeamNumber(for teamNumber: Int) -> Int {
+        teamNumber == 1 ? 2 : 1
+    }
+
+    private func vegasPlayers(teamNumber: Int) -> [Player] {
+        let assignedPlayers = vm.players.filter { $0.teamNumber == teamNumber }
+        if assignedPlayers.count == 2 {
+            return assignedPlayers
+        }
+
+        let startIndex = teamNumber == 1 ? 0 : 2
+        guard vm.players.count >= startIndex + 2 else { return assignedPlayers }
+        return Array(vm.players[startIndex..<(startIndex + 2)])
     }
 
     private func scoreCellView(gross: Int?, par: Int, strokes: Int) -> some View {

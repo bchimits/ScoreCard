@@ -8,26 +8,28 @@ struct ScorecardView: View {
     @State private var showRoundReview = false
     @State private var didPromptForCompletion = false
 
-    var round: Round { vm.round! }
-    var holes: [Hole] { round.holeList }
+    var round: Round? { vm.round }
+    var holes: [Hole] { round?.holeList ?? [] }
 
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                holeSelector
-                    .padding(.vertical, 8)
-                    .background(Color(.systemGroupedBackground))
+                if round != nil {
+                    holeSelector
+                        .padding(.vertical, 8)
+                        .background(Color(.systemGroupedBackground))
 
-                if let hole = holes.first(where: { $0.number == selectedHole }) {
-                    holeCard(hole)
+                    if let hole = holes.first(where: { $0.number == selectedHole }) {
+                        holeCard(hole)
+                    }
+
+                    Spacer()
+
+                    // Summary footer
+                    summaryFooter
                 }
-
-                Spacer()
-
-                // Summary footer
-                summaryFooter
             }
-            .navigationTitle(round.name)
+            .navigationTitle(round?.name ?? "")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
@@ -197,7 +199,8 @@ struct ScorecardView: View {
     }
 
     private func promptForCompletionIfNeeded() {
-        guard !didPromptForCompletion,
+        guard let round,
+              !didPromptForCompletion,
               round.isFinished == false,
               !vm.players.isEmpty,
               isRoundFullyScored else { return }

@@ -19,6 +19,7 @@ struct RoundSetupView: View {
     // Player entry
     @State private var players: [DraftPlayer] = []
     @State private var showAddPlayer = false
+    @State private var editingPlayerID: UUID?
     @State private var showCoursePicker = false
     @StateObject private var courseSearch = CourseSearchService()
 
@@ -170,21 +171,29 @@ struct RoundSetupView: View {
         Form {
             Section {
                 ForEach(players) { p in
-                    HStack {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(p.name).font(.headline)
-                            Text("Hdcp \(p.handicapIndex, specifier: "%.1f")  •  \(p.teeColor)")
-                                .font(.caption).foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                        if format.requiresTeams, let t = p.teamNumber {
-                            Text("Team \(t)")
+                    Button {
+                        editingPlayerID = p.id
+                    } label: {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(p.name).font(.headline)
+                                Text("Hdcp \(p.handicapIndex, specifier: "%.1f")")
+                                    .font(.caption).foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            if format.requiresTeams, let t = p.teamNumber {
+                                Text("Team \(t)")
+                                    .font(.caption)
+                                    .padding(.horizontal, 8).padding(.vertical, 3)
+                                    .background(t == 1 ? Color.blue.opacity(0.15) : Color.red.opacity(0.15))
+                                    .clipShape(Capsule())
+                            }
+                            Image(systemName: "chevron.right")
                                 .font(.caption)
-                                .padding(.horizontal, 8).padding(.vertical, 3)
-                                .background(t == 1 ? Color.blue.opacity(0.15) : Color.red.opacity(0.15))
-                                .clipShape(Capsule())
+                                .foregroundStyle(.tertiary)
                         }
                     }
+                    .buttonStyle(.plain)
                 }
                 .onDelete { players.remove(atOffsets: $0) }
 
@@ -204,13 +213,53 @@ struct RoundSetupView: View {
             if players.count >= format.minimumPlayers {
                 Section {
                     Button("Next: Review") { step = 2 }
+                        .disabled(!hasValidTeamAssignments)
                         .frame(maxWidth: .infinity)
+                } footer: {
+                    if format.requiresTeams && !hasValidTeamAssignments {
+                        Text("Team games need exactly two players on Team 1 and two players on Team 2.")
+                    }
                 }
             }
         }
         .sheet(isPresented: $showAddPlayer) {
             AddPlayerSheet(players: $players, format: format)
         }
+        .sheet(isPresented: isEditingPlayer) {
+            if let player = editingPlayerBinding {
+                EditPlayerSheet(
+                    player: player,
+                    format: format,
+                    onDelete: {
+                        if let editingPlayerID {
+                            players.removeAll { $0.id == editingPlayerID }
+                        }
+                        editingPlayerID = nil
+                    }
+                )
+            }
+        }
+    }
+
+    private var isEditingPlayer: Binding<Bool> {
+        Binding(
+            get: { editingPlayerBinding != nil },
+            set: { isPresented in
+                if !isPresented { editingPlayerID = nil }
+            }
+        )
+    }
+
+    private var editingPlayerBinding: Binding<DraftPlayer>? {
+        guard let editingPlayerID,
+              let index = players.firstIndex(where: { $0.id == editingPlayerID }) else { return nil }
+        return $players[index]
+    }
+
+    private var hasValidTeamAssignments: Bool {
+        guard format.requiresTeams else { return true }
+        return players.filter { $0.teamNumber == 1 }.count == 2 &&
+            players.filter { $0.teamNumber == 2 }.count == 2
     }
 
     // MARK: - Step 2: Confirm
@@ -388,10 +437,7 @@ struct AddPlayerSheet: View {
 
     @State private var name = ""
     @State private var handicapIndex = 1
-    @State private var teeColor = "White"
     @State private var teamNumber = 1
-
-    let teeColors = ["White", "Blue", "Gold", "Red", "Black"]
 
     var body: some View {
         NavigationStack {
@@ -402,9 +448,6 @@ struct AddPlayerSheet: View {
                         ForEach(1...32, id: \.self) { i in
                             Text("\(i)").tag(i)
                         }
-                    }
-                    Picker("Tee Color", selection: $teeColor) {
-                        ForEach(teeColors, id: \.self) { Text($0) }
                     }
                 }
 
@@ -427,12 +470,86 @@ struct AddPlayerSheet: View {
                         players.append(DraftPlayer(
                             name: name,
                             handicapIndex: Double(handicapIndex),
-                            teeColor: teeColor,
+                            teeColor: "White",
                             teamNumber: format.requiresTeams ? teamNumber : nil
                         ))
                         dismiss()
                     }
                     .disabled(name.isEmpty)
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Edit Player Sheet
+
+struct EditPlayerSheet: View {
+    @Binding var player: DraftPlayer
+    let format: GameFormat
+    let onDelete: () -> Void
+    @Environment(\.dismiss) var dismiss
+
+    @State private var name: String
+    @State private var handicapIndex: Double
+    @State private var teamNumber: Int
+
+    init(player: Binding<DraftPlayer>, format: GameFormat, onDelete: @escaping () -> Void) {
+        self._player = player
+        self.format = format
+        self.onDelete = onDelete
+        self._name = State(initialValue: player.wrappedValue.name)
+        self._handicapIndex = State(initialValue: player.wrappedValue.handicapIndex)
+        self._teamNumber = State(initialValue: player.wrappedValue.teamNumber ?? 1)
+    }
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("Player Info") {
+                    TextField("Name", text: $name)
+                    HStack {
+                        Text("Handicap Index")
+                        Spacer()
+                        TextField("0.0", value: $handicapIndex, format: .number)
+                            .keyboardType(.decimalPad)
+                            .multilineTextAlignment(.trailing)
+                            .frame(width: 70)
+                    }
+                }
+
+                if format.requiresTeams {
+                    Section("Team") {
+                        Picker("Team", selection: $teamNumber) {
+                            Text("Team 1").tag(1)
+                            Text("Team 2").tag(2)
+                        }
+                        .pickerStyle(.segmented)
+                    }
+                }
+
+                Section {
+                    Button("Delete Player", role: .destructive) {
+                        onDelete()
+                        dismiss()
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+            }
+            .navigationTitle("Edit Player")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Done") {
+                        player.name = name.trimmingCharacters(in: .whitespacesAndNewlines)
+                        player.handicapIndex = handicapIndex
+                        player.teamNumber = format.requiresTeams ? teamNumber : nil
+                        dismiss()
+                    }
+                    .disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }
             }
         }
