@@ -1,9 +1,9 @@
 import Foundation
 
 struct GolfCourseAPIService {
-    static let apiKeyStorageKey = "golfCourseAPIKey"
+    static let defaultAPIKey = "NVFQK7TKF6TNTEIE2CIPZOHPXE"
 
-    var apiKey: String
+    var apiKey = defaultAPIKey
     var baseURL = URL(string: "https://api.golfcourseapi.com")!
 
     func findCourseDetails(matching query: String) async throws -> GolfCourseDetails? {

@@ -13,7 +13,6 @@ struct RoundSetupView: View {
     @State private var slopeRating = 113
     @State private var par = 72
     @State private var courseHoles: [Hole]?
-    @State private var golfCourseAPIKey = UserDefaults.standard.string(forKey: GolfCourseAPIService.apiKeyStorageKey) ?? ""
     @State private var isLoadingCourseDetails = false
     @State private var courseLookupMessage: String?
 
@@ -113,26 +112,18 @@ struct RoundSetupView: View {
                     .font(.caption)
             }
 
-            Section {
-                SecureField("API Key", text: $golfCourseAPIKey)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .onChange(of: golfCourseAPIKey) { _, newValue in
-                        UserDefaults.standard.set(newValue.trimmingCharacters(in: .whitespacesAndNewlines), forKey: GolfCourseAPIService.apiKeyStorageKey)
+            if isLoadingCourseDetails || courseLookupMessage != nil {
+                Section("Course Data") {
+                    if isLoadingCourseDetails {
+                        Label("Loading course details...", systemImage: "arrow.triangle.2.circlepath")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else if let courseLookupMessage {
+                        Text(courseLookupMessage)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
                     }
-                if isLoadingCourseDetails {
-                    Label("Loading course details...", systemImage: "arrow.triangle.2.circlepath")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                } else if let courseLookupMessage {
-                    Text(courseLookupMessage)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
                 }
-            } header: {
-                Text("GolfCourseAPI")
-            } footer: {
-                Text("Optional. Add a free GolfCourseAPI key to auto-fill rating, slope, par, and hole stroke indexes after selecting a nearby course.")
             }
 
             Section("Course Details") {
@@ -270,11 +261,15 @@ struct RoundSetupView: View {
         courseName = result.name
         courseLookupMessage = nil
 
+        if let knownCourse = KnownCourseData.course(matching: result.name) {
+            applyCourseDetails(knownCourse, selectedName: result.name)
+            CourseCache.shared.save(knownCourse)
+            courseLookupMessage = "Loaded Arrowood scorecard details from built-in data."
+            return
+        }
+
         if let cached = CourseCache.shared.find(name: result.name) {
-            courseRating = cached.courseRating
-            slopeRating = cached.slopeRating
-            par = cached.par
-            courseHoles = cached.holes
+            applyCourseDetails(cached, selectedName: result.name)
             courseLookupMessage = cached.holes?.isEmpty == false ? "Loaded cached scorecard details." : "Loaded cached course details."
         } else {
             courseRating = 72.0
@@ -283,26 +278,32 @@ struct RoundSetupView: View {
             courseHoles = nil
         }
 
-        let key = golfCourseAPIKey.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !key.isEmpty else {
-            if courseLookupMessage == nil {
-                courseLookupMessage = "Add a GolfCourseAPI key to auto-fill course details."
-            }
-            return
-        }
-
-        Task { await loadCourseDetails(for: result.name, apiKey: key) }
+        Task { await loadCourseDetails(for: result.name) }
     }
 
-    private func loadCourseDetails(for query: String, apiKey: String) async {
+    private func applyCourseDetails(_ course: CachedCourse, selectedName: String? = nil) {
+        courseName = selectedName ?? course.name
+        courseRating = course.courseRating
+        slopeRating = course.slopeRating
+        courseHoles = course.holes.map { Array($0.prefix(holes)) }
+        par = courseHoles?.reduce(0) { $0 + $1.par } ?? course.par
+    }
+
+    private func loadCourseDetails(for query: String) async {
         isLoadingCourseDetails = true
         defer { isLoadingCourseDetails = false }
 
         do {
-            let service = GolfCourseAPIService(apiKey: apiKey)
+            let service = GolfCourseAPIService()
             guard let details = try await service.findCourseDetails(matching: query),
                   let tee = details.bestTee else {
-                courseLookupMessage = "No API scorecard match found. Manual values are still editable."
+                if let knownCourse = KnownCourseData.course(matching: query) {
+                    applyCourseDetails(knownCourse)
+                    CourseCache.shared.save(knownCourse)
+                    courseLookupMessage = "Loaded Arrowood scorecard details from built-in data."
+                } else {
+                    courseLookupMessage = "No API scorecard match found. Manual values are still editable."
+                }
                 return
             }
 

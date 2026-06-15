@@ -69,6 +69,21 @@ final class RoundViewModel: ObservableObject {
         }
     }
 
+    func finishRound() async {
+        guard let round else { return }
+        isLoading = true
+        defer { isLoading = false }
+
+        do {
+            try await CloudKitService.shared.markRoundFinished(round)
+            var updatedRound = round
+            updatedRound.isFinished = true
+            self.round = updatedRound
+        } catch {
+            showError("Failed to finish round: \(error.localizedDescription)")
+        }
+    }
+
     // MARK: - Players
 
     func addPlayer(name: String, handicapIndex: Double, teeColor: String, teamNumber: Int?) {

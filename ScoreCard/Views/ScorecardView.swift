@@ -4,6 +4,9 @@ struct ScorecardView: View {
     @EnvironmentObject var vm: RoundViewModel
     @State private var selectedHole: Int = 1
     @State private var showScoreboard = false
+    @State private var showCompletionConfirmation = false
+    @State private var showRoundReview = false
+    @State private var didPromptForCompletion = false
 
     var round: Round { vm.round! }
     var holes: [Hole] { round.holeList }
@@ -39,8 +42,29 @@ struct ScorecardView: View {
                 ScoreboardView()
                     .environmentObject(vm)
             }
+            .sheet(isPresented: $showRoundReview) {
+                RoundReviewView()
+                    .environmentObject(vm)
+            }
+            .alert("Complete Round?", isPresented: $showCompletionConfirmation) {
+                Button("Keep Scoring", role: .cancel) { }
+                Button("Complete Round") {
+                    Task {
+                        await vm.finishRound()
+                        if vm.round?.isFinished == true {
+                            showRoundReview = true
+                        }
+                    }
+                }
+            } message: {
+                Text("All scores are entered for the final hole. Review the results and finish this round?")
+            }
+            .onChange(of: vm.scores.count) { _, _ in
+                promptForCompletionIfNeeded()
+            }
             .onAppear {
                 vm.startPolling()
+                promptForCompletionIfNeeded()
             }
             .onDisappear {
                 vm.stopPolling()
@@ -170,6 +194,24 @@ struct ScorecardView: View {
         if toPar < 0 { return .red }
         if toPar > 0 { return .blue }
         return .primary
+    }
+
+    private func promptForCompletionIfNeeded() {
+        guard !didPromptForCompletion,
+              round.isFinished == false,
+              !vm.players.isEmpty,
+              isRoundFullyScored else { return }
+
+        didPromptForCompletion = true
+        showCompletionConfirmation = true
+    }
+
+    private var isRoundFullyScored: Bool {
+        holes.allSatisfy { hole in
+            vm.players.allSatisfy { player in
+                vm.grossScore(playerID: player.id, hole: hole.number) != nil
+            }
+        }
     }
 }
 
