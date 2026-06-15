@@ -1,21 +1,19 @@
-//
-//  ContentView.swift
-//  ScoreCard
-//
-//  Created by Brandon Chimits on 6/14/26.
-//
-
 import SwiftUI
 
 struct ContentView: View {
+    @StateObject private var vm = RoundViewModel()
+
     var body: some View {
-        VStack {
-            Image(systemName: "globe")
-                .imageScale(.large)
-                .foregroundStyle(.tint)
-            Text("Hello, world!")
+        Group {
+            if vm.round == nil {
+                HomeView()
+                    .environmentObject(vm)
+            } else {
+                ScorecardView()
+                    .environmentObject(vm)
+            }
         }
-        .padding()
+        .animation(.easeInOut, value: vm.round?.id)
     }
 }
 
