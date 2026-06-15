@@ -5,12 +5,12 @@ import Foundation
 @MainActor
 final class VegasLiveActivityManager {
     static let shared = VegasLiveActivityManager()
-    private var activity: Activity<VegasLiveActivityAttributes>?
+    private var activity: Activity<RoundLiveActivityAttributes>?
 
-    func start(attributes: VegasLiveActivityAttributes, initialState: VegasLiveActivityAttributes.ContentState) {
+    func start(attributes: RoundLiveActivityAttributes, initialState: RoundLiveActivityAttributes.ContentState) {
         guard ActivityAuthorizationInfo().areActivitiesEnabled else { return }
         // Reattach to any lingering activity from a previous session
-        if activity == nil, let existing = Activity<VegasLiveActivityAttributes>.activities.first {
+        if activity == nil, let existing = Activity<RoundLiveActivityAttributes>.activities.first {
             activity = existing
         }
         if activity != nil {
@@ -21,17 +21,17 @@ final class VegasLiveActivityManager {
             let content = ActivityContent(state: initialState, staleDate: nil)
             activity = try Activity.request(attributes: attributes, content: content)
         } catch {
-            // Silently fail — Live Activities may not be available on all devices
+            // Silently fail because Live Activities may not be available on all devices.
         }
     }
 
-    func update(state: VegasLiveActivityAttributes.ContentState) async {
+    func update(state: RoundLiveActivityAttributes.ContentState) async {
         guard let activity else { return }
         let content = ActivityContent(state: state, staleDate: nil)
         await activity.update(content)
     }
 
-    func end(finalState: VegasLiveActivityAttributes.ContentState) async {
+    func end(finalState: RoundLiveActivityAttributes.ContentState) async {
         guard let activity else { return }
         let content = ActivityContent(state: finalState, staleDate: nil)
         await activity.end(content, dismissalPolicy: .default)

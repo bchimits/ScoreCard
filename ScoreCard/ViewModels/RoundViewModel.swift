@@ -358,54 +358,205 @@ final class RoundViewModel: ObservableObject {
         return points.mapValues { "\($0) pts" }
     }
 
-    // MARK: - Vegas Live Activity
+    // MARK: - Live Activity
 
-    private func vegasActivityState() -> VegasLiveActivityAttributes.ContentState? {
-        guard #available(iOS 16.1, *), let round else { return nil }
-        let totals = vegasTeamTotals()
+    private func roundActivityState() -> RoundLiveActivityAttributes.ContentState? {
+        guard #available(iOS 16.1, *), let round, !players.isEmpty else { return nil }
         let latestHole = scores.filter { $0.grossStrokes > 0 }.map { $0.holeNumber }.max() ?? 1
         let completed = round.holeList.filter { hole in
-            !players.isEmpty && players.allSatisfy { grossScore(playerID: $0.id, hole: hole.number) != nil }
+            players.allSatisfy { grossScore(playerID: $0.id, hole: hole.number) != nil }
         }.count
-        return VegasLiveActivityAttributes.ContentState(
-            team1Points: totals.team1Diff,
-            team2Points: totals.team2Diff,
+
+        let summary = liveActivitySummary(for: round.format)
+        return RoundLiveActivityAttributes.ContentState(
+            leadingLabel: summary.leading.label,
+            leadingValue: summary.leading.value,
+            trailingLabel: summary.trailing.label,
+            trailingValue: summary.trailing.value,
+            leadingIsWinning: summary.leading.isWinning,
+            trailingIsWinning: summary.trailing.isWinning,
+            rows: summary.rows,
             currentHole: latestHole,
             holesCompleted: completed
         )
     }
 
-    private func vegasActivityAttributes() -> VegasLiveActivityAttributes? {
-        guard #available(iOS 16.1, *), let round else { return nil }
-        let t1 = players.filter { $0.teamNumber == 1 }.map { $0.name }.joined(separator: " & ")
-        let t2 = players.filter { $0.teamNumber == 2 }.map { $0.name }.joined(separator: " & ")
-        guard !t1.isEmpty, !t2.isEmpty else { return nil }
-        return VegasLiveActivityAttributes(
-            team1Players: t1,
-            team2Players: t2,
+    private func roundActivityAttributes() -> RoundLiveActivityAttributes? {
+        guard #available(iOS 16.1, *), let round, !players.isEmpty else { return nil }
+        return RoundLiveActivityAttributes(
+            roundName: round.name,
+            formatName: round.format.rawValue,
             totalHoles: round.holeList.count
         )
     }
 
+    private typealias ActivityScore = (label: String, value: String, isWinning: Bool)
+    private typealias ActivitySummary = (leading: ActivityScore, trailing: ActivityScore, rows: [RoundLiveActivityAttributes.ScoreRow])
+
+    private func liveActivitySummary(for format: GameFormat) -> ActivitySummary {
+        switch format {
+        case .strokePlay:
+            return strokePlayActivitySummary()
+        case .matchPlay:
+            return matchPlayActivitySummary()
+        case .bestBall:
+            return bestBallActivitySummary()
+        case .vegas:
+            return vegasActivitySummary()
+        case .sixes:
+            return sixesActivitySummary()
+        }
+    }
+
+    private func strokePlayActivitySummary() -> ActivitySummary {
+        let entries = leaderboard
+        let first = entries.first
+        let second = entries.dropFirst().first
+        let firstIsWinning = first?.holesPlayed ?? 0 > 0
+        let secondIsWinning = firstIsWinning && second != nil && first?.toPar == second?.toPar
+
+        let rows = first.map { entry in
+            [
+                scoreRow(id: "gross", label: "Gross", value: "\(entry.totalGross)", isHighlighted: false),
+                scoreRow(id: "net", label: "Net", value: "\(entry.totalNet)", isHighlighted: true),
+                scoreRow(id: "holes", label: "Holes", value: "\(entry.holesPlayed)", isHighlighted: false)
+            ]
+        } ?? []
+
+        return (
+            leading: (first?.player.name ?? "Leader", first.map { formatToPar($0.toPar) } ?? "-", firstIsWinning),
+            trailing: (second?.player.name ?? "Next", second.map { formatToPar($0.toPar) } ?? "-", secondIsWinning),
+            rows: rows
+        )
+    }
+
+    private func matchPlayActivitySummary() -> ActivitySummary {
+        guard players.count >= 2 else { return placeholderActivitySummary() }
+        let results = computeMatchPlay()
+        let p1 = players[0]
+        let p2 = players[1]
+        let p1Value = results[p1.name] ?? "AS"
+        let p2Value = results[p2.name] ?? "AS"
+
+        return (
+            leading: (p1.name, p1Value, p1Value.contains("UP")),
+            trailing: (p2.name, p2Value, p2Value.contains("UP")),
+            rows: resultRows(from: results, highlightedValuesContaining: "UP")
+        )
+    }
+
+    private func bestBallActivitySummary() -> ActivitySummary {
+        let results = computeBestBall()
+        let team1Value = results["Team 1"] ?? "0 holes"
+        let team2Value = results["Team 2"] ?? "0 holes"
+        let team1Wins = leadingInteger(in: team1Value)
+        let team2Wins = leadingInteger(in: team2Value)
+
+        return (
+            leading: (teamLabel(1), team1Value, team1Wins > team2Wins),
+            trailing: (teamLabel(2), team2Value, team2Wins > team1Wins),
+            rows: resultRows(from: results, highlightedValuesContaining: "")
+        )
+    }
+
+    private func vegasActivitySummary() -> ActivitySummary {
+        let totals = vegasTeamTotals()
+        let results = computeVegas()
+        let team1Value = "+\(totals.team1Diff)"
+        let team2Value = "+\(totals.team2Diff)"
+
+        return (
+            leading: (teamLabel(1), team1Value, totals.team1Diff > totals.team2Diff),
+            trailing: (teamLabel(2), team2Value, totals.team2Diff > totals.team1Diff),
+            rows: [
+                scoreRow(id: "standing", label: "Standing", value: results["Standing"] ?? "Even", isHighlighted: true),
+                scoreRow(id: "team1Total", label: "T1 Total", value: results["Team 1 Total"] ?? "-", isHighlighted: false),
+                scoreRow(id: "team2Total", label: "T2 Total", value: results["Team 2 Total"] ?? "-", isHighlighted: false)
+            ]
+        )
+    }
+
+    private func sixesActivitySummary() -> ActivitySummary {
+        let ranked = computeSixes()
+            .map { (name: $0.key, points: leadingInteger(in: $0.value), value: $0.value) }
+            .sorted { lhs, rhs in
+                if lhs.points == rhs.points { return lhs.name < rhs.name }
+                return lhs.points > rhs.points
+            }
+        let first = ranked.first
+        let second = ranked.dropFirst().first
+        let isTie = first != nil && second != nil && first?.points == second?.points
+
+        return (
+            leading: (first?.name ?? "Leader", first?.value ?? "0 pts", first != nil && !isTie),
+            trailing: (second?.name ?? "Next", second?.value ?? "0 pts", second != nil && !isTie && second?.points == first?.points),
+            rows: ranked.prefix(3).map { scoreRow(id: $0.name, label: $0.name, value: $0.value, isHighlighted: $0.points == first?.points) }
+        )
+    }
+
+    private func placeholderActivitySummary() -> ActivitySummary {
+        (
+            leading: ("Leader", "-", false),
+            trailing: ("Next", "-", false),
+            rows: []
+        )
+    }
+
+    private func resultRows(from results: [String: String], highlightedValuesContaining marker: String) -> [RoundLiveActivityAttributes.ScoreRow] {
+        results.keys.sorted().prefix(3).map { key in
+            let value = results[key] ?? "-"
+            let isHighlighted = !marker.isEmpty && value.contains(marker)
+            return scoreRow(id: key, label: key, value: value, isHighlighted: isHighlighted)
+        }
+    }
+
+    private func scoreRow(id: String, label: String, value: String, isHighlighted: Bool) -> RoundLiveActivityAttributes.ScoreRow {
+        RoundLiveActivityAttributes.ScoreRow(id: id, label: label, value: value, isHighlighted: isHighlighted)
+    }
+
+    private func teamLabel(_ teamNumber: Int) -> String {
+        let names = players
+            .filter { $0.teamNumber == teamNumber }
+            .map { $0.name }
+            .joined(separator: " & ")
+        return names.isEmpty ? "Team \(teamNumber)" : names
+    }
+
+    private func leadingInteger(in value: String) -> Int {
+        let digits = value.prefix { $0.isNumber }
+        return Int(digits) ?? 0
+    }
+
+    private func formatToPar(_ toPar: Int) -> String {
+        if toPar == 0 { return "E" }
+        return toPar > 0 ? "+\(toPar)" : "\(toPar)"
+    }
+
     func startVegasLiveActivity() {
         guard #available(iOS 16.1, *),
-              round?.format == .vegas,
-              let attrs = vegasActivityAttributes(),
-              let state = vegasActivityState() else { return }
+              let attrs = roundActivityAttributes(),
+              let state = roundActivityState() else { return }
         VegasLiveActivityManager.shared.start(attributes: attrs, initialState: state)
     }
 
     func updateVegasLiveActivity() {
         guard #available(iOS 16.1, *),
-              round?.format == .vegas,
-              let state = vegasActivityState() else { return }
+              let state = roundActivityState() else { return }
         Task { await VegasLiveActivityManager.shared.update(state: state) }
     }
 
     func endVegasLiveActivity() {
-        guard #available(iOS 16.1, *), round?.format == .vegas else { return }
-        let finalState = vegasActivityState() ?? VegasLiveActivityAttributes.ContentState(
-            team1Points: 0, team2Points: 0, currentHole: 1, holesCompleted: 0
+        guard #available(iOS 16.1, *) else { return }
+        let finalState = roundActivityState() ?? RoundLiveActivityAttributes.ContentState(
+            leadingLabel: "Leader",
+            leadingValue: "-",
+            trailingLabel: "Next",
+            trailingValue: "-",
+            leadingIsWinning: false,
+            trailingIsWinning: false,
+            rows: [],
+            currentHole: 1,
+            holesCompleted: 0
         )
         Task { await VegasLiveActivityManager.shared.end(finalState: finalState) }
     }

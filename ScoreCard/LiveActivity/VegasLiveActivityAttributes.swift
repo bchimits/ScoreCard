@@ -1,18 +1,28 @@
 import ActivityKit
 import Foundation
 
-/// Shared between the main app and the ScoreCardWidget extension.
-/// Add this file to both targets in Xcode (target membership checkbox).
 @available(iOS 16.1, *)
-struct VegasLiveActivityAttributes: ActivityAttributes {
+struct RoundLiveActivityAttributes: ActivityAttributes {
     struct ContentState: Codable, Hashable {
-        var team1Points: Int
-        var team2Points: Int
+        var leadingLabel: String    // "T1", "Alice", "#1 Smith"
+        var leadingValue: String    // "+10", "2 UP", "-3", "4 pts"
+        var trailingLabel: String
+        var trailingValue: String
+        var leadingIsWinning: Bool
+        var trailingIsWinning: Bool
+        var rows: [ScoreRow]
         var currentHole: Int
         var holesCompleted: Int
     }
 
-    let team1Players: String   // e.g. "Alice & Bob"
-    let team2Players: String   // e.g. "Carol & Dave"
+    struct ScoreRow: Codable, Hashable, Identifiable {
+        var id: String
+        var label: String
+        var value: String
+        var isHighlighted: Bool
+    }
+
+    let roundName: String
+    let formatName: String
     let totalHoles: Int
 }
