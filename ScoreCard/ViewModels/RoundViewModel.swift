@@ -387,6 +387,8 @@ final class RoundViewModel: ObservableObject {
             trailingValue: summary.trailing.value,
             leadingIsWinning: summary.leading.isWinning,
             trailingIsWinning: summary.trailing.isWinning,
+            leadingColorName: summary.leading.colorName,
+            trailingColorName: summary.trailing.colorName,
             rows: summary.rows,
             currentHole: latestHole,
             holesCompleted: completed
@@ -402,7 +404,7 @@ final class RoundViewModel: ObservableObject {
         )
     }
 
-    private typealias ActivityScore = (label: String, value: String, isWinning: Bool)
+    private typealias ActivityScore = (label: String, value: String, isWinning: Bool, colorName: String?)
     private typealias ActivitySummary = (leading: ActivityScore, trailing: ActivityScore, rows: [RoundLiveActivityAttributes.ScoreRow])
 
     private func liveActivitySummary(for format: GameFormat) -> ActivitySummary {
@@ -436,8 +438,8 @@ final class RoundViewModel: ObservableObject {
         } ?? []
 
         return (
-            leading: (first?.player.name ?? "Leader", first.map { formatToPar($0.toPar) } ?? "-", firstIsWinning),
-            trailing: (second?.player.name ?? "Next", second.map { formatToPar($0.toPar) } ?? "-", secondIsWinning),
+            leading: (first?.player.name ?? "Leader", first.map { formatToPar($0.toPar) } ?? "-", firstIsWinning, nil),
+            trailing: (second?.player.name ?? "Next", second.map { formatToPar($0.toPar) } ?? "-", secondIsWinning, nil),
             rows: rows
         )
     }
@@ -451,8 +453,8 @@ final class RoundViewModel: ObservableObject {
         let p2Value = results[p2.name] ?? "AS"
 
         return (
-            leading: (p1.name, p1Value, p1Value.contains("UP")),
-            trailing: (p2.name, p2Value, p2Value.contains("UP")),
+            leading: (p1.name, p1Value, p1Value.contains("UP"), nil),
+            trailing: (p2.name, p2Value, p2Value.contains("UP"), nil),
             rows: resultRows(from: results, highlightedValuesContaining: "UP")
         )
     }
@@ -470,8 +472,8 @@ final class RoundViewModel: ObservableObject {
         let secondWins = leadingInteger(in: secondValue)
 
         return (
-            leading: (teamLabel(firstTeamNumber), firstValue, firstWins > secondWins),
-            trailing: (teamLabel(secondTeamNumber), secondValue, secondWins > firstWins),
+            leading: (teamLabel(firstTeamNumber), firstValue, firstWins > secondWins, firstTeamName),
+            trailing: (teamLabel(secondTeamNumber), secondValue, secondWins > firstWins, secondTeamName),
             rows: resultRows(from: results, highlightedValuesContaining: "")
         )
     }
@@ -485,8 +487,8 @@ final class RoundViewModel: ObservableObject {
         let secondValue = "+\(totals.team2Diff)"
 
         return (
-            leading: (teamLabel(totals.team1Number), firstValue, totals.team1Diff > totals.team2Diff),
-            trailing: (teamLabel(totals.team2Number), secondValue, totals.team2Diff > totals.team1Diff),
+            leading: (teamLabel(totals.team1Number), firstValue, totals.team1Diff > totals.team2Diff, firstTeamName),
+            trailing: (teamLabel(totals.team2Number), secondValue, totals.team2Diff > totals.team1Diff, secondTeamName),
             rows: [
                 scoreRow(id: "standing", label: "Standing", value: results["Standing"] ?? "Even", isHighlighted: true),
                 scoreRow(id: "team1Total", label: "\(firstTeamName) Total", value: results["\(firstTeamName) Total"] ?? "-", isHighlighted: false),
@@ -507,16 +509,16 @@ final class RoundViewModel: ObservableObject {
         let isTie = first != nil && second != nil && first?.points == second?.points
 
         return (
-            leading: (first?.name ?? "Leader", first?.value ?? "0 pts", first != nil && !isTie),
-            trailing: (second?.name ?? "Next", second?.value ?? "0 pts", second != nil && !isTie && second?.points == first?.points),
+            leading: (first?.name ?? "Leader", first?.value ?? "0 pts", first != nil && !isTie, nil),
+            trailing: (second?.name ?? "Next", second?.value ?? "0 pts", second != nil && !isTie && second?.points == first?.points, nil),
             rows: ranked.prefix(3).map { scoreRow(id: $0.name, label: $0.name, value: $0.value, isHighlighted: $0.points == first?.points) }
         )
     }
 
     private func placeholderActivitySummary() -> ActivitySummary {
         (
-            leading: ("Leader", "-", false),
-            trailing: ("Next", "-", false),
+            leading: ("Leader", "-", false, nil),
+            trailing: ("Next", "-", false, nil),
             rows: []
         )
     }
@@ -590,6 +592,8 @@ final class RoundViewModel: ObservableObject {
             trailingValue: "-",
             leadingIsWinning: false,
             trailingIsWinning: false,
+            leadingColorName: nil,
+            trailingColorName: nil,
             rows: [],
             currentHole: 1,
             holesCompleted: 0

@@ -17,6 +17,7 @@ struct RoundLiveActivityWidget: Widget {
                         label: context.state.leadingLabel,
                         value: context.state.leadingValue,
                         isWinning: context.state.leadingIsWinning,
+                        teamColorName: context.state.leadingColorName,
                         alignment: .leading
                     )
                     .padding(.leading, 6)
@@ -26,6 +27,7 @@ struct RoundLiveActivityWidget: Widget {
                         label: context.state.trailingLabel,
                         value: context.state.trailingValue,
                         isWinning: context.state.trailingIsWinning,
+                        teamColorName: context.state.trailingColorName,
                         alignment: .trailing
                     )
                     .padding(.trailing, 6)
@@ -51,18 +53,24 @@ struct RoundLiveActivityWidget: Widget {
                     .foregroundStyle(.secondary)
                 }
             } compactLeading: {
-                compactSummary(label: context.state.leadingLabel, value: context.state.leadingValue, isWinning: context.state.leadingIsWinning)
+                compactSummary(
+                    label: context.state.leadingLabel,
+                    value: context.state.leadingValue,
+                    isWinning: context.state.leadingIsWinning,
+                    teamColorName: context.state.leadingColorName
+                )
             } compactTrailing: {
-                compactSummary(label: context.state.trailingLabel, value: context.state.trailingValue, isWinning: context.state.trailingIsWinning)
+                compactSummary(
+                    label: context.state.trailingLabel,
+                    value: context.state.trailingValue,
+                    isWinning: context.state.trailingIsWinning,
+                    teamColorName: context.state.trailingColorName
+                )
             } minimal: {
                 if context.state.leadingIsWinning {
-                    Text(shortLabel(context.state.leadingLabel))
-                        .font(.caption2.bold())
-                        .foregroundStyle(.green)
+                    minimalSummary(label: context.state.leadingLabel, teamColorName: context.state.leadingColorName)
                 } else if context.state.trailingIsWinning {
-                    Text(shortLabel(context.state.trailingLabel))
-                        .font(.caption2.bold())
-                        .foregroundStyle(.green)
+                    minimalSummary(label: context.state.trailingLabel, teamColorName: context.state.trailingColorName)
                 } else {
                     Image(systemName: "equal.circle")
                         .font(.caption2)
@@ -72,8 +80,9 @@ struct RoundLiveActivityWidget: Widget {
         }
     }
 
-    private func summaryColumn(label: String, value: String, isWinning: Bool, alignment: HorizontalAlignment) -> some View {
-        VStack(alignment: alignment, spacing: 2) {
+    private func summaryColumn(label: String, value: String, isWinning: Bool, teamColorName: String?, alignment: HorizontalAlignment) -> some View {
+        let color = displayColor(teamColorName: teamColorName, isWinning: isWinning)
+        return VStack(alignment: alignment, spacing: 2) {
             Text(label)
                 .font(.caption2)
                 .foregroundStyle(.secondary)
@@ -81,24 +90,65 @@ struct RoundLiveActivityWidget: Widget {
                 .minimumScaleFactor(0.8)
             Text(value)
                 .font(.title2.bold())
-                .foregroundStyle(isWinning ? .green : .primary)
+                .foregroundStyle(color)
                 .lineLimit(1)
                 .minimumScaleFactor(0.75)
                 .contentTransition(.numericText())
         }
     }
 
-    private func compactSummary(label: String, value: String, isWinning: Bool) -> some View {
-        HStack(spacing: 3) {
-            Text(shortLabel(label))
-                .font(.caption2.bold())
+    private func compactSummary(label: String, value: String, isWinning: Bool, teamColorName: String?) -> some View {
+        let color = displayColor(teamColorName: teamColorName, isWinning: isWinning)
+        return HStack(spacing: 4) {
+            if teamColorName != nil {
+                Image(systemName: "circle.fill")
+                    .font(.caption2.bold())
+                    .foregroundStyle(color)
+                    .accessibilityLabel(Text(teamColorName ?? "Team"))
+            } else {
+                Text(shortLabel(label))
+                    .font(.caption2.bold())
+                    .foregroundStyle(color)
+            }
             Text(value)
                 .font(.caption.bold())
+                .foregroundStyle(color)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
         }
-        .foregroundStyle(isWinning ? .green : .primary)
         .contentTransition(.numericText())
+    }
+
+    @ViewBuilder
+    private func minimalSummary(label: String, teamColorName: String?) -> some View {
+        if let teamColorName {
+            Image(systemName: "circle.fill")
+                .font(.caption2.bold())
+                .foregroundStyle(teamColor(for: teamColorName))
+                .accessibilityLabel(Text(teamColorName))
+        } else {
+            Text(shortLabel(label))
+                .font(.caption2.bold())
+                .foregroundStyle(.green)
+        }
+    }
+
+    private func displayColor(teamColorName: String?, isWinning: Bool) -> Color {
+        if let teamColorName {
+            return teamColor(for: teamColorName)
+        }
+        return isWinning ? .green : .primary
+    }
+
+    private func teamColor(for name: String) -> Color {
+        switch name.lowercased() {
+        case "red": return .red
+        case "blue": return .blue
+        case "green": return .green
+        case "yellow": return .yellow
+        case "purple": return .purple
+        default: return .primary
+        }
     }
 
     private func shortLabel(_ label: String) -> String {
@@ -122,7 +172,8 @@ private struct RoundLockScreenView: View {
                 scoreColumn(
                     label: context.state.leadingLabel,
                     value: context.state.leadingValue,
-                    isWinning: context.state.leadingIsWinning
+                    isWinning: context.state.leadingIsWinning,
+                    teamColorName: context.state.leadingColorName
                 )
 
                 Divider().frame(height: 44)
@@ -146,7 +197,8 @@ private struct RoundLockScreenView: View {
                 scoreColumn(
                     label: context.state.trailingLabel,
                     value: context.state.trailingValue,
-                    isWinning: context.state.trailingIsWinning
+                    isWinning: context.state.trailingIsWinning,
+                    teamColorName: context.state.trailingColorName
                 )
             }
 
@@ -171,8 +223,9 @@ private struct RoundLockScreenView: View {
         .frame(maxWidth: .infinity)
     }
 
-    private func scoreColumn(label: String, value: String, isWinning: Bool) -> some View {
-        VStack(spacing: 4) {
+    private func scoreColumn(label: String, value: String, isWinning: Bool, teamColorName: String?) -> some View {
+        let color = displayColor(teamColorName: teamColorName, isWinning: isWinning)
+        return VStack(spacing: 4) {
             Text(label)
                 .font(.caption2)
                 .foregroundStyle(.secondary)
@@ -180,11 +233,29 @@ private struct RoundLockScreenView: View {
                 .minimumScaleFactor(0.8)
             Text(value)
                 .font(.title.bold())
-                .foregroundStyle(isWinning ? .green : .primary)
+                .foregroundStyle(color)
                 .lineLimit(1)
                 .minimumScaleFactor(0.7)
                 .contentTransition(.numericText())
         }
         .frame(maxWidth: .infinity)
+    }
+
+    private func displayColor(teamColorName: String?, isWinning: Bool) -> Color {
+        if let teamColorName {
+            return teamColor(for: teamColorName)
+        }
+        return isWinning ? .green : .primary
+    }
+
+    private func teamColor(for name: String) -> Color {
+        switch name.lowercased() {
+        case "red": return .red
+        case "blue": return .blue
+        case "green": return .green
+        case "yellow": return .yellow
+        case "purple": return .purple
+        default: return .primary
+        }
     }
 }

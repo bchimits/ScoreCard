@@ -10,6 +10,8 @@ struct RoundLiveActivityAttributes: ActivityAttributes {
         var trailingValue: String
         var leadingIsWinning: Bool
         var trailingIsWinning: Bool
+        var leadingColorName: String?
+        var trailingColorName: String?
         var rows: [ScoreRow]
         var currentHole: Int
         var holesCompleted: Int

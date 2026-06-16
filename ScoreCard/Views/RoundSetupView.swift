@@ -494,9 +494,14 @@ struct AddPlayerSheet: View {
                     Section("Team") {
                         Picker("Team Color", selection: $teamNumber) {
                             ForEach(TeamColorChoice.all) { choice in
-                                Label(choice.name, systemImage: "circle.fill")
-                                    .foregroundStyle(choice.color)
-                                    .tag(choice.id)
+                                Label {
+                                    Text(choice.name)
+                                } icon: {
+                                    Image(systemName: "circle.fill")
+                                        .symbolRenderingMode(.palette)
+                                        .foregroundStyle(choice.color)
+                                }
+                                .tag(choice.id)
                             }
                         }
                         .pickerStyle(.menu)
@@ -564,9 +569,14 @@ struct EditPlayerSheet: View {
                     Section("Team") {
                         Picker("Team Color", selection: $teamNumber) {
                             ForEach(TeamColorChoice.all) { choice in
-                                Label(choice.name, systemImage: "circle.fill")
-                                    .foregroundStyle(choice.color)
-                                    .tag(choice.id)
+                                Label {
+                                    Text(choice.name)
+                                } icon: {
+                                    Image(systemName: "circle.fill")
+                                        .symbolRenderingMode(.palette)
+                                        .foregroundStyle(choice.color)
+                                }
+                                .tag(choice.id)
                             }
                         }
                         .pickerStyle(.menu)
