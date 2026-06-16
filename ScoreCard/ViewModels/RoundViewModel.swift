@@ -108,6 +108,7 @@ final class RoundViewModel: ObservableObject {
                     teamNumber: nil,
                     teeColor: "White",
                     deviceID: deviceID,
+                    teeOrder: currentPlayers.count,
                     courseHandicap: courseHandicap
                 )
                 currentPlayers.append(player)
@@ -139,7 +140,7 @@ final class RoundViewModel: ObservableObject {
 
     // MARK: - Players
 
-    func addPlayer(name: String, handicapIndex: Double, teeColor: String, teamNumber: Int?) {
+    func addPlayer(name: String, handicapIndex: Double, teeColor: String, teamNumber: Int?, teeOrder: Int? = nil) {
         guard let round else { return }
         let ch = Player.computeCourseHandicap(
             index: handicapIndex,
@@ -155,6 +156,7 @@ final class RoundViewModel: ObservableObject {
             teamNumber: teamNumber,
             teeColor: teeColor,
             deviceID: deviceID,
+            teeOrder: teeOrder ?? players.count,
             courseHandicap: ch
         )
         player.courseHandicap = ch
@@ -210,7 +212,7 @@ final class RoundViewModel: ObservableObject {
     func wolfPlayer(for holeNumber: Int) -> Player? {
         let orderedPlayers = wolfPlayerOrder
         guard !orderedPlayers.isEmpty else { return nil }
-        let index = (holeNumber - 1 + orderedPlayers.count - 1) % orderedPlayers.count
+        let index = (holeNumber - 1) % orderedPlayers.count
         return orderedPlayers[index]
     }
 
@@ -534,7 +536,10 @@ final class RoundViewModel: ObservableObject {
 
     private var wolfPlayerOrder: [Player] {
         players.sorted { lhs, rhs in
-            lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
+            if lhs.teeOrder == rhs.teeOrder {
+                return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
+            }
+            return lhs.teeOrder < rhs.teeOrder
         }
     }
 

@@ -229,6 +229,7 @@ private struct PlayerRecord: Codable {
     let teamNumber: Int?
     let teeColor: String
     let deviceID: String
+    let teeOrder: Int
     let courseHandicap: Int
 
     enum CodingKeys: String, CodingKey {
@@ -239,6 +240,7 @@ private struct PlayerRecord: Codable {
         case teamNumber = "team_number"
         case teeColor = "tee_color"
         case deviceID = "device_id"
+        case teeOrder = "tee_order"
         case courseHandicap = "course_handicap"
     }
 
@@ -250,6 +252,7 @@ private struct PlayerRecord: Codable {
         teamNumber = player.teamNumber
         teeColor = player.teeColor
         deviceID = player.deviceID
+        teeOrder = player.teeOrder
         courseHandicap = player.courseHandicap
     }
 
@@ -262,6 +265,7 @@ private struct PlayerRecord: Codable {
             teamNumber: teamNumber,
             teeColor: teeColor,
             deviceID: deviceID,
+            teeOrder: teeOrder,
             courseHandicap: courseHandicap
         )
     }

@@ -38,6 +38,7 @@ create table public.players (
     team_number integer,
     tee_color text not null,
     device_id text not null,
+    tee_order integer not null default 0,
     course_handicap integer not null
 );
 

@@ -324,7 +324,7 @@ struct PlayerHoleScoreRow: View {
             }
         }
         .padding()
-        .background(Color(.secondarySystemGroupedBackground))
+        .background(wolfHighlightColor ?? Color(.secondarySystemGroupedBackground))
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .confirmationDialog("Wolf Choice", isPresented: $showWolfSelection, titleVisibility: .visible) {
             Button("Go Lone Wolf") {
@@ -357,6 +357,18 @@ struct PlayerHoleScoreRow: View {
 
     private var wolfChoiceIcon: String {
         vm.wolfChoiceIcon(for: hole.number)
+    }
+
+    private var wolfHighlightColor: Color? {
+        guard vm.round?.format == .wolf else { return nil }
+        let selections = vm.wolfSelections
+        let holeNum = hole.number
+        guard let selection = selections.first(where: { $0.holeNumber == holeNum }) else { return nil }
+        if selection.isLoneWolf {
+            return selection.wolfPlayerID == player.id ? Color.red.opacity(0.25) : nil
+        }
+        let isInWolfTeam = selection.wolfPlayerID == player.id || selection.partnerPlayerID == player.id
+        return isInWolfTeam ? Color.green.opacity(0.25) : nil
     }
 
     private func scoreColor(gross: Int, par: Int, strokes: Int) -> Color {

@@ -432,13 +432,15 @@ struct RoundSetupView: View {
         )
         guard vm.round != nil else { return }
 
-        // Build Player models from drafts
-        for draft in players {
+        // Build Player models from drafts with randomized tee order for Wolf rotation
+        let shuffledPlayers = players.shuffled()
+        for (index, draft) in shuffledPlayers.enumerated() {
             vm.addPlayer(
                 name: draft.name,
                 handicapIndex: draft.handicapIndex,
                 teeColor: draft.teeColor,
-                teamNumber: draft.teamNumber
+                teamNumber: draft.teamNumber,
+                teeOrder: index
             )
         }
         await vm.savePlayers()

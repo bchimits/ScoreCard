@@ -9,6 +9,7 @@ struct Player: Identifiable, Codable {
     var teamNumber: Int?        // nil for individual formats
     var teeColor: String        // "White", "Blue", "Red", etc.
     var deviceID: String        // identifies the device that created this player
+    var teeOrder: Int = 0       // fixed order used by rotating games like Wolf
 
     var courseHandicap: Int = 0  // computed and stored at round creation
 
@@ -39,6 +40,7 @@ extension Player {
         self.teamNumber     = record["teamNumber"] as? Int
         self.teeColor       = record["teeColor"] as? String ?? "White"
         self.deviceID       = record["deviceID"] as? String ?? ""
+        self.teeOrder       = record["teeOrder"] as? Int ?? 0
         self.courseHandicap = record["courseHandicap"] as? Int ?? 0
     }
 
@@ -49,6 +51,7 @@ extension Player {
         record["handicapIndex"]  = handicapIndex as CKRecordValue
         record["teeColor"]       = teeColor as CKRecordValue
         record["deviceID"]       = deviceID as CKRecordValue
+        record["teeOrder"]       = teeOrder as CKRecordValue
         record["courseHandicap"] = courseHandicap as CKRecordValue
         if let t = teamNumber { record["teamNumber"] = t as CKRecordValue }
         return record
