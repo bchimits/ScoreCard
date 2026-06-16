@@ -1,34 +1,48 @@
 import Foundation
 
-// LOCAL TESTING MODE
-// CloudKit requires a paid Apple Developer account ($99/yr).
-// This file uses an in-memory store so the full app can be tested locally.
-// When you have a developer account, delete everything below and uncomment
-// the CloudKit implementation at the bottom of this file.
+// Uses Supabase when configured in SupabaseConfig.swift, otherwise falls back to
+// an in-memory store so the app still works locally without a backend.
 
-actor CloudKitService {
+@MainActor
+final class CloudKitService {
     static let shared = CloudKitService()
 
-    // In-memory stores
-    private var rounds:  [String: Round]   = [:]  // id -> Round
-    private var players: [String: Player]  = [:]  // id -> Player
-    private var scores:  [String: Score]   = [:]  // id -> Score
+    private let supabase = SupabaseService.shared
+
+    // In-memory fallback stores
+    private var rounds:  [String: Round]   = [:]
+    private var players: [String: Player]  = [:]
+    private var scores:  [String: Score]   = [:]
 
     // MARK: - Round
 
     func saveRound(_ round: Round) async throws {
+        if supabase.isConfigured {
+            try await supabase.saveRound(round)
+            return
+        }
         rounds[round.id] = round
     }
 
     func fetchRound(joinCode: String) async throws -> Round? {
-        rounds.values.first { $0.joinCode == joinCode }
+        if supabase.isConfigured {
+            return try await supabase.fetchRound(joinCode: joinCode)
+        }
+        return rounds.values.first { $0.joinCode == joinCode }
     }
 
     func fetchRound(id: String) async throws -> Round? {
-        rounds[id]
+        if supabase.isConfigured {
+            return try await supabase.fetchRound(id: id)
+        }
+        return rounds[id]
     }
 
     func markRoundFinished(_ round: Round) async throws {
+        if supabase.isConfigured {
+            try await supabase.markRoundFinished(round)
+            return
+        }
         var updated = round
         updated.isFinished = true
         rounds[round.id] = updated
@@ -37,21 +51,35 @@ actor CloudKitService {
     // MARK: - Players
 
     func savePlayers(_ newPlayers: [Player]) async throws {
+        if supabase.isConfigured {
+            try await supabase.savePlayers(newPlayers)
+            return
+        }
         for p in newPlayers { players[p.id] = p }
     }
 
     func fetchPlayers(roundID: String) async throws -> [Player] {
-        players.values.filter { $0.roundID == roundID }
+        if supabase.isConfigured {
+            return try await supabase.fetchPlayers(roundID: roundID)
+        }
+        return players.values.filter { $0.roundID == roundID }
     }
 
     // MARK: - Scores
 
     func saveScore(_ score: Score) async throws {
+        if supabase.isConfigured {
+            try await supabase.saveScore(score)
+            return
+        }
         scores[score.id] = score
     }
 
     func fetchScores(roundID: String) async throws -> [Score] {
-        scores.values.filter { $0.roundID == roundID }
+        if supabase.isConfigured {
+            return try await supabase.fetchScores(roundID: roundID)
+        }
+        return scores.values.filter { $0.roundID == roundID }
     }
 }
 

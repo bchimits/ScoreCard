@@ -5,6 +5,7 @@ struct ScorecardView: View {
     @State private var selectedHole: Int = 1
     @State private var showScoreboard = false
     @State private var showCompletionConfirmation = false
+    @State private var showLeaveConfirmation = false
     @State private var showRoundReview = false
     @State private var didPromptForCompletion = false
 
@@ -32,6 +33,15 @@ struct ScorecardView: View {
             .navigationTitle(round?.name ?? "")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button {
+                        showLeaveConfirmation = true
+                    } label: {
+                        Image(systemName: "house")
+                    }
+                    .accessibilityLabel("Leave Round")
+                }
+
                 ToolbarItem(placement: .navigationBarTrailing) {
                     Button {
                         showScoreboard = true
@@ -60,6 +70,14 @@ struct ScorecardView: View {
                 }
             } message: {
                 Text("All scores are entered for the final hole. Review the results and finish this round?")
+            }
+            .alert("Leave Round?", isPresented: $showLeaveConfirmation) {
+                Button("Stay", role: .cancel) { }
+                Button("Leave") {
+                    vm.returnHomeForNewRound()
+                }
+            } message: {
+                Text("This returns to Home without finishing the round. The saved round can still be joined with its code.")
             }
             .onChange(of: vm.scores.count) { _, _ in
                 promptForCompletionIfNeeded()
