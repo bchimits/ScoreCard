@@ -196,26 +196,55 @@ struct JoinRoundView: View {
     @EnvironmentObject var vm: RoundViewModel
     @Environment(\.dismiss) var dismiss
     @State private var code = ""
+    @State private var playerName = ""
+    @State private var handicapIndex = 0
+
+    private var canJoin: Bool {
+        code.count == 6 && !playerName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !vm.isLoading
+    }
 
     var body: some View {
         NavigationStack {
             Form {
-                Section("Enter the 6-character round code") {
+                Section {
                     TextField("e.g. AB12CD", text: $code)
                         .textInputAutocapitalization(.characters)
                         .autocorrectionDisabled()
                         .font(.title2.monospaced())
                         .multilineTextAlignment(.center)
+                } header: {
+                    Text("Round Code")
+                } footer: {
+                    Text("Ask the round creator for the 6-character code.")
+                }
+
+                Section {
+                    TextField("Name", text: $playerName)
+                        .textContentType(.name)
+
+                    Picker("Handicap Index", selection: $handicapIndex) {
+                        ForEach(0...32, id: \.self) { index in
+                            Text("\(index)").tag(index)
+                        }
+                    }
+                } header: {
+                    Text("Your Player Info")
+                } footer: {
+                    Text("For team games, join first. The group can assign team colors after players are in the round.")
                 }
 
                 Section {
                     Button("Join Round") {
                         Task {
-                            await vm.joinRound(code: code)
+                            await vm.joinRound(
+                                code: code,
+                                playerName: playerName,
+                                handicapIndex: Double(handicapIndex)
+                            )
                             if vm.round != nil { dismiss() }
                         }
                     }
-                    .disabled(code.count != 6 || vm.isLoading)
+                    .disabled(!canJoin)
                     .frame(maxWidth: .infinity)
                 }
             }

@@ -4,6 +4,7 @@ struct ScoreboardView: View {
     @EnvironmentObject var vm: RoundViewModel
     @Environment(\.dismiss) var dismiss
     @State private var selectedTab = 0
+    @State private var showTeamManager = false
 
     var round: Round? { vm.round }
 
@@ -49,7 +50,12 @@ struct ScoreboardView: View {
             .navigationTitle("Scoreboard")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
+                ToolbarItemGroup(placement: .navigationBarTrailing) {
+                    if round?.format.requiresTeams == true {
+                        Button("Teams") {
+                            showTeamManager = true
+                        }
+                    }
                     Button {
                         Task { await vm.refreshPlayersAndScores() }
                     } label: {
@@ -59,6 +65,10 @@ struct ScoreboardView: View {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button("Done") { dismiss() }
                 }
+            }
+            .sheet(isPresented: $showTeamManager) {
+                TeamManagerSheet()
+                    .environmentObject(vm)
             }
             .onAppear { vm.startPolling() }
             .onDisappear { vm.stopPolling() }
@@ -370,3 +380,58 @@ struct ScoreboardView: View {
         return .primary
     }
 }
+private struct TeamManagerSheet: View {
+    @EnvironmentObject var vm: RoundViewModel
+    @Environment(\.dismiss) var dismiss
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    ForEach($vm.players) { $player in
+                        Picker(player.name, selection: teamSelection(for: $player)) {
+                            Text("Unassigned").tag(0)
+                            ForEach(TeamColorChoice.all) { choice in
+                                Label {
+                                    Text(choice.name)
+                                } icon: {
+                                    Image(systemName: "circle.fill")
+                                        .symbolRenderingMode(.palette)
+                                        .foregroundStyle(choice.color)
+                                }
+                                .tag(choice.id)
+                            }
+                        }
+                    }
+                } header: {
+                    Text("Team Colors")
+                } footer: {
+                    Text("Team formats work best with exactly two players on each selected color.")
+                }
+            }
+            .navigationTitle("Manage Teams")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Save") {
+                        Task {
+                            await vm.savePlayers()
+                            dismiss()
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func teamSelection(for player: Binding<Player>) -> Binding<Int> {
+        Binding(
+            get: { player.wrappedValue.teamNumber ?? 0 },
+            set: { player.wrappedValue.teamNumber = $0 == 0 ? nil : $0 }
+        )
+    }
+}
+

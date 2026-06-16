@@ -54,16 +54,65 @@ final class RoundViewModel: ObservableObject {
         }
     }
 
-    func joinRound(code: String) async {
+    func joinRound(code: String, playerName: String, handicapIndex: Double) async {
         isLoading = true
         defer { isLoading = false }
+
+        let trimmedName = playerName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmedName.isEmpty else {
+            showError("Enter your player name before joining.")
+            return
+        }
+
         do {
             guard let found = try await CloudKitService.shared.fetchRound(joinCode: code.uppercased()) else {
                 showError("Round not found. Check the code and try again.")
                 return
             }
+
             self.round = found
-            await refreshPlayersAndScores()
+            async let fetchedPlayers = CloudKitService.shared.fetchPlayers(roundID: found.id)
+            async let fetchedScores = CloudKitService.shared.fetchScores(roundID: found.id)
+            var currentPlayers = try await fetchedPlayers
+            self.scores = try await fetchedScores
+
+            if let existingPlayer = currentPlayers.first(where: { $0.deviceID == deviceID }) {
+                var updatedPlayer = existingPlayer
+                updatedPlayer.name = trimmedName
+                updatedPlayer.handicapIndex = handicapIndex
+                updatedPlayer.courseHandicap = Player.computeCourseHandicap(
+                    index: handicapIndex,
+                    slope: found.slopeRating,
+                    rating: found.courseRating,
+                    par: found.par
+                )
+                if let index = currentPlayers.firstIndex(where: { $0.id == existingPlayer.id }) {
+                    currentPlayers[index] = updatedPlayer
+                }
+                try await CloudKitService.shared.savePlayers([updatedPlayer])
+            } else {
+                let courseHandicap = Player.computeCourseHandicap(
+                    index: handicapIndex,
+                    slope: found.slopeRating,
+                    rating: found.courseRating,
+                    par: found.par
+                )
+                let player = Player(
+                    id: UUID().uuidString,
+                    roundID: found.id,
+                    name: trimmedName,
+                    handicapIndex: handicapIndex,
+                    teamNumber: nil,
+                    teeColor: "White",
+                    deviceID: deviceID,
+                    courseHandicap: courseHandicap
+                )
+                currentPlayers.append(player)
+                try await CloudKitService.shared.savePlayers([player])
+            }
+
+            self.players = currentPlayers
+            startVegasLiveActivity()
         } catch {
             showError("Failed to join: \(error.localizedDescription)")
         }
@@ -294,9 +343,22 @@ final class RoundViewModel: ObservableObject {
             if b1 < b2 { firstWins += 1 } else if b2 < b1 { secondWins += 1 }
         }
 
+        let diff = firstWins - secondWins
+        if diff > 0 {
+            return [
+                teamColorName(firstTeamNumber): "\(diff) UP",
+                teamColorName(secondTeamNumber): "\(diff) DN"
+            ]
+        }
+        if diff < 0 {
+            return [
+                teamColorName(firstTeamNumber): "\(abs(diff)) DN",
+                teamColorName(secondTeamNumber): "\(abs(diff)) UP"
+            ]
+        }
         return [
-            teamColorName(firstTeamNumber): "\(firstWins) holes",
-            teamColorName(secondTeamNumber): "\(secondWins) holes"
+            teamColorName(firstTeamNumber): "AS",
+            teamColorName(secondTeamNumber): "AS"
         ]
     }
 
@@ -466,15 +528,13 @@ final class RoundViewModel: ObservableObject {
         let secondTeamNumber = teams.dropFirst().first ?? 2
         let firstTeamName = teamColorName(firstTeamNumber)
         let secondTeamName = teamColorName(secondTeamNumber)
-        let firstValue = results[firstTeamName] ?? "0 holes"
-        let secondValue = results[secondTeamName] ?? "0 holes"
-        let firstWins = leadingInteger(in: firstValue)
-        let secondWins = leadingInteger(in: secondValue)
+        let firstValue = results[firstTeamName] ?? "AS"
+        let secondValue = results[secondTeamName] ?? "AS"
 
         return (
-            leading: (teamLabel(firstTeamNumber), firstValue, firstWins > secondWins, firstTeamName),
-            trailing: (teamLabel(secondTeamNumber), secondValue, secondWins > firstWins, secondTeamName),
-            rows: resultRows(from: results, highlightedValuesContaining: "")
+            leading: (teamLabel(firstTeamNumber), firstValue, firstValue.contains("UP"), firstTeamName),
+            trailing: (teamLabel(secondTeamNumber), secondValue, secondValue.contains("UP"), secondTeamName),
+            rows: resultRows(from: results, highlightedValuesContaining: "UP")
         )
     }
 
