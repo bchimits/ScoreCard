@@ -6,6 +6,7 @@ enum GameFormat: String, CaseIterable, Codable, Identifiable {
     case bestBall     = "Best Ball"
     case vegas        = "Vegas"
     case sixes        = "Sixes"
+    case wolf         = "Wolf"
 
     var id: String { rawValue }
 
@@ -16,12 +17,14 @@ enum GameFormat: String, CaseIterable, Codable, Identifiable {
         case .bestBall:   return "Teams of 2. Best net score on each hole counts."
         case .vegas:      return "Teams of 2. Scores combined as two-digit number; lower combined number wins."
         case .sixes:      return "Partners rotate every 6 holes. Three separate 6-hole matches."
+        case .wolf:       return "Rotating Wolf chooses a partner or goes Lone Wolf. Best-ball points decide the game."
         }
     }
 
     var requiresTeams: Bool {
         switch self {
         case .bestBall, .vegas, .sixes: return true
+        case .wolf: return false
         default: return false
         }
     }
@@ -30,6 +33,7 @@ enum GameFormat: String, CaseIterable, Codable, Identifiable {
         switch self {
         case .matchPlay: return 2
         case .bestBall, .vegas, .sixes: return 4
+        case .wolf: return 3
         default: return 1
         }
     }

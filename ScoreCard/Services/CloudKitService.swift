@@ -13,6 +13,7 @@ final class CloudKitService {
     private var rounds:  [String: Round]   = [:]
     private var players: [String: Player]  = [:]
     private var scores:  [String: Score]   = [:]
+    private var wolfSelections: [String: WolfSelection] = [:]
 
     // MARK: - Round
 
@@ -80,6 +81,23 @@ final class CloudKitService {
             return try await supabase.fetchScores(roundID: roundID)
         }
         return scores.values.filter { $0.roundID == roundID }
+    }
+
+    // MARK: - Wolf
+
+    func saveWolfSelection(_ selection: WolfSelection) async throws {
+        if supabase.isConfigured {
+            try await supabase.saveWolfSelection(selection)
+            return
+        }
+        wolfSelections[selection.id] = selection
+    }
+
+    func fetchWolfSelections(roundID: String) async throws -> [WolfSelection] {
+        if supabase.isConfigured {
+            return try await supabase.fetchWolfSelections(roundID: roundID)
+        }
+        return wolfSelections.values.filter { $0.roundID == roundID }
     }
 }
 

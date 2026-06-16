@@ -71,6 +71,18 @@ final class SupabaseService {
         return records.map(\.score)
     }
 
+    func saveWolfSelection(_ selection: WolfSelection) async throws {
+        try await upsert(table: "wolf_selections", conflictColumn: "id", body: [WolfSelectionRecord(selection)])
+    }
+
+    func fetchWolfSelections(roundID: String) async throws -> [WolfSelection] {
+        let records: [WolfSelectionRecord] = try await fetch(
+            table: "wolf_selections",
+            queryItems: [URLQueryItem(name: "round_id", value: "eq.\(roundID)")]
+        )
+        return records.map(\.selection)
+    }
+
     private func fetch<T: Decodable>(table: String, queryItems: [URLQueryItem]) async throws -> T {
         var request = try request(path: table, queryItems: queryItems)
         request.httpMethod = "GET"
@@ -285,6 +297,44 @@ private struct ScoreRecord: Codable {
             playerID: playerID,
             holeNumber: holeNumber,
             grossStrokes: grossStrokes
+        )
+    }
+}
+
+private struct WolfSelectionRecord: Codable {
+    let id: String
+    let roundID: String
+    let holeNumber: Int
+    let wolfPlayerID: String
+    let partnerPlayerID: String?
+    let choice: String
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case roundID = "round_id"
+        case holeNumber = "hole_number"
+        case wolfPlayerID = "wolf_player_id"
+        case partnerPlayerID = "partner_player_id"
+        case choice
+    }
+
+    init(_ selection: WolfSelection) {
+        id = selection.id
+        roundID = selection.roundID
+        holeNumber = selection.holeNumber
+        wolfPlayerID = selection.wolfPlayerID
+        partnerPlayerID = selection.partnerPlayerID
+        choice = selection.choice.rawValue
+    }
+
+    var selection: WolfSelection {
+        WolfSelection(
+            id: id,
+            roundID: roundID,
+            holeNumber: holeNumber,
+            wolfPlayerID: wolfPlayerID,
+            partnerPlayerID: partnerPlayerID,
+            choice: WolfSelection.Choice(rawValue: choice) ?? .partner
         )
     }
 }

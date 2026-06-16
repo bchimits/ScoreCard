@@ -215,6 +215,8 @@ struct RoundReviewView: View {
             return "Vegas Result"
         case .sixes:
             return "Sixes Result"
+        case .wolf:
+            return "Wolf Result"
         case .strokePlay:
             return "Result"
         }

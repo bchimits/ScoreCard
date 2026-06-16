@@ -10,6 +10,7 @@ final class RoundViewModel: ObservableObject {
     @Published var round: Round?
     @Published var players: [Player] = []
     @Published var scores: [Score] = []
+    @Published var wolfSelections: [WolfSelection] = []
     @Published var isLoading = false
     @Published var errorMessage: String?
     @Published var showError = false
@@ -73,8 +74,10 @@ final class RoundViewModel: ObservableObject {
             self.round = found
             async let fetchedPlayers = CloudKitService.shared.fetchPlayers(roundID: found.id)
             async let fetchedScores = CloudKitService.shared.fetchScores(roundID: found.id)
+            async let fetchedWolfSelections = CloudKitService.shared.fetchWolfSelections(roundID: found.id)
             var currentPlayers = try await fetchedPlayers
             self.scores = try await fetchedScores
+            self.wolfSelections = try await fetchedWolfSelections
 
             if let existingPlayer = currentPlayers.first(where: { $0.deviceID == deviceID }) {
                 var updatedPlayer = existingPlayer
@@ -204,6 +207,60 @@ final class RoundViewModel: ObservableObject {
         return gross - player.strokesOnHole(holeInfo)
     }
 
+    func wolfPlayer(for holeNumber: Int) -> Player? {
+        let orderedPlayers = wolfPlayerOrder
+        guard !orderedPlayers.isEmpty else { return nil }
+        let index = (holeNumber - 1 + orderedPlayers.count - 1) % orderedPlayers.count
+        return orderedPlayers[index]
+    }
+
+    func wolfSelection(for holeNumber: Int) -> WolfSelection? {
+        wolfSelections.first { $0.holeNumber == holeNumber }
+    }
+
+    func wolfChoiceLabel(for holeNumber: Int) -> String {
+        guard let selection = wolfSelection(for: holeNumber) else { return "Choose Wolf play" }
+        if selection.isLoneWolf { return "Lone Wolf" }
+        if let partnerID = selection.partnerPlayerID,
+           let partner = players.first(where: { $0.id == partnerID }) {
+            return "Wolf with \(partner.name)"
+        }
+        return "Choose Wolf play"
+    }
+
+    func wolfChoiceIcon(for holeNumber: Int) -> String {
+        guard let selection = wolfSelection(for: holeNumber) else { return "pawprint.fill" }
+        return selection.isLoneWolf ? "person.fill" : "person.2.fill"
+    }
+
+    func saveWolfSelection(holeNumber: Int, partnerPlayerID: String?, isLoneWolf: Bool) async {
+        guard let round,
+              round.format == .wolf,
+              let wolf = wolfPlayer(for: holeNumber) else { return }
+
+        let selection = WolfSelection(
+            id: "\(round.id)-wolf-\(holeNumber)",
+            roundID: round.id,
+            holeNumber: holeNumber,
+            wolfPlayerID: wolf.id,
+            partnerPlayerID: isLoneWolf ? nil : partnerPlayerID,
+            choice: isLoneWolf ? .loneWolf : .partner
+        )
+
+        if let index = wolfSelections.firstIndex(where: { $0.id == selection.id }) {
+            wolfSelections[index] = selection
+        } else {
+            wolfSelections.append(selection)
+        }
+        updateVegasLiveActivity()
+
+        do {
+            try await CloudKitService.shared.saveWolfSelection(selection)
+        } catch {
+            showError("Failed to save Wolf choice: \(error.localizedDescription)")
+        }
+    }
+
     // MARK: - Leaderboard
 
     struct LeaderboardEntry: Identifiable {
@@ -250,6 +307,7 @@ final class RoundViewModel: ObservableObject {
         case .bestBall:    return computeBestBall()
         case .vegas:       return computeVegas()
         case .sixes:       return computeSixes()
+        case .wolf:        return computeWolf()
         default:           return [:]
         }
     }
@@ -277,6 +335,7 @@ final class RoundViewModel: ObservableObject {
         round = nil
         players = []
         scores = []
+        wolfSelections = []
         errorMessage = nil
         showError = false
         isLoading = false
@@ -287,9 +346,11 @@ final class RoundViewModel: ObservableObject {
         do {
             async let fetchedPlayers = CloudKitService.shared.fetchPlayers(roundID: round.id)
             async let fetchedScores  = CloudKitService.shared.fetchScores(roundID: round.id)
-            let (p, s) = try await (fetchedPlayers, fetchedScores)
+            async let fetchedWolfSelections = CloudKitService.shared.fetchWolfSelections(roundID: round.id)
+            let (p, s, w) = try await (fetchedPlayers, fetchedScores, fetchedWolfSelections)
             self.players = p
             self.scores  = s
+            self.wolfSelections = w
             startVegasLiveActivity()
         } catch {
             // Silently swallow polling errors to avoid spamming the user
@@ -432,6 +493,63 @@ final class RoundViewModel: ObservableObject {
         return points.mapValues { "\($0) pts" }
     }
 
+    private func computeWolf() -> [String: String] {
+        guard let round, players.count >= 3 else { return [:] }
+        var points = Dictionary(uniqueKeysWithValues: players.map { ($0.id, 0) })
+
+        for hole in round.holeList {
+            guard let selection = wolfSelection(for: hole.number),
+                  let wolf = players.first(where: { $0.id == selection.wolfPlayerID }) else { continue }
+
+            let wolfSide = wolfSidePlayerIDs(for: selection)
+            let opposingSide = players.map(\.id).filter { !wolfSide.contains($0) }
+            guard let wolfBest = bestNetScore(playerIDs: wolfSide, holeNumber: hole.number),
+                  let opposingBest = bestNetScore(playerIDs: opposingSide, holeNumber: hole.number),
+                  wolfBest != opposingBest else { continue }
+
+            if wolfBest < opposingBest {
+                if selection.isLoneWolf {
+                    points[wolf.id, default: 0] += 2
+                } else {
+                    wolfSide.forEach { points[$0, default: 0] += 1 }
+                }
+            } else if selection.isLoneWolf {
+                opposingSide.forEach { points[$0, default: 0] += 1 }
+            } else {
+                opposingSide.forEach { points[$0, default: 0] += 1 }
+            }
+        }
+
+        return players
+            .sorted { lhs, rhs in
+                let lhsPoints = points[lhs.id, default: 0]
+                let rhsPoints = points[rhs.id, default: 0]
+                if lhsPoints == rhsPoints { return lhs.name < rhs.name }
+                return lhsPoints > rhsPoints
+            }
+            .reduce(into: [String: String]()) { result, player in
+                result[player.name] = "\(points[player.id, default: 0]) pts"
+            }
+    }
+
+    private var wolfPlayerOrder: [Player] {
+        players.sorted { lhs, rhs in
+            lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
+        }
+    }
+
+    private func wolfSidePlayerIDs(for selection: WolfSelection) -> [String] {
+        if selection.isLoneWolf { return [selection.wolfPlayerID] }
+        if let partnerPlayerID = selection.partnerPlayerID {
+            return [selection.wolfPlayerID, partnerPlayerID]
+        }
+        return [selection.wolfPlayerID]
+    }
+
+    private func bestNetScore(playerIDs: [String], holeNumber: Int) -> Int? {
+        playerIDs.compactMap { netScore(playerID: $0, hole: holeNumber) }.min()
+    }
+
     // MARK: - Live Activity
 
     private func roundActivityState() -> RoundLiveActivityAttributes.ContentState? {
@@ -481,6 +599,8 @@ final class RoundViewModel: ObservableObject {
             return vegasActivitySummary()
         case .sixes:
             return sixesActivitySummary()
+        case .wolf:
+            return wolfActivitySummary()
         }
     }
 
@@ -559,6 +679,24 @@ final class RoundViewModel: ObservableObject {
 
     private func sixesActivitySummary() -> ActivitySummary {
         let ranked = computeSixes()
+            .map { (name: $0.key, points: leadingInteger(in: $0.value), value: $0.value) }
+            .sorted { lhs, rhs in
+                if lhs.points == rhs.points { return lhs.name < rhs.name }
+                return lhs.points > rhs.points
+            }
+        let first = ranked.first
+        let second = ranked.dropFirst().first
+        let isTie = first != nil && second != nil && first?.points == second?.points
+
+        return (
+            leading: (first?.name ?? "Leader", first?.value ?? "0 pts", first != nil && !isTie, nil),
+            trailing: (second?.name ?? "Next", second?.value ?? "0 pts", second != nil && !isTie && second?.points == first?.points, nil),
+            rows: ranked.prefix(3).map { scoreRow(id: $0.name, label: $0.name, value: $0.value, isHighlighted: $0.points == first?.points) }
+        )
+    }
+
+    private func wolfActivitySummary() -> ActivitySummary {
+        let ranked = computeWolf()
             .map { (name: $0.key, points: leadingInteger(in: $0.value), value: $0.value) }
             .sorted { lhs, rhs in
                 if lhs.points == rhs.points { return lhs.name < rhs.name }

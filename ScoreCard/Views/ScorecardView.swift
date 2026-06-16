@@ -245,6 +245,7 @@ struct PlayerHoleScoreRow: View {
 
     @State private var inputScore: Int = 0
     @State private var isEditing = false
+    @State private var showWolfSelection = false
 
     var currentGross: Int? { vm.grossScore(playerID: player.id, hole: hole.number) }
     var strokes: Int { player.strokesOnHole(hole) }
@@ -255,6 +256,19 @@ struct PlayerHoleScoreRow: View {
                 HStack(spacing: 4) {
                     Text(player.name)
                         .font(.headline)
+                    if isWolfTurn {
+                        Button {
+                            showWolfSelection = true
+                        } label: {
+                            Label(wolfChoiceLabel, systemImage: wolfChoiceIcon)
+                                .labelStyle(.iconOnly)
+                                .font(.caption.bold())
+                                .padding(6)
+                                .background(Color.orange.opacity(0.18), in: Circle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(wolfChoiceLabel)
+                    }
                     if strokes > 0 {
                         // Dot indicator for handicap stroke(s)
                         ForEach(0..<strokes, id: \.self) { _ in
@@ -312,6 +326,37 @@ struct PlayerHoleScoreRow: View {
         .padding()
         .background(Color(.secondarySystemGroupedBackground))
         .clipShape(RoundedRectangle(cornerRadius: 12))
+        .confirmationDialog("Wolf Choice", isPresented: $showWolfSelection, titleVisibility: .visible) {
+            Button("Go Lone Wolf") {
+                Task { await vm.saveWolfSelection(holeNumber: hole.number, partnerPlayerID: nil, isLoneWolf: true) }
+            }
+
+            ForEach(partnerOptions) { partner in
+                Button("Choose \(partner.name)") {
+                    Task { await vm.saveWolfSelection(holeNumber: hole.number, partnerPlayerID: partner.id, isLoneWolf: false) }
+                }
+            }
+
+            Button("Cancel", role: .cancel) { }
+        } message: {
+            Text("Choose a partner for this hole, or go Lone Wolf for double points if you win.")
+        }
+    }
+
+    private var isWolfTurn: Bool {
+        vm.round?.format == .wolf && vm.wolfPlayer(for: hole.number)?.id == player.id
+    }
+
+    private var partnerOptions: [Player] {
+        vm.players.filter { $0.id != player.id }
+    }
+
+    private var wolfChoiceLabel: String {
+        vm.wolfChoiceLabel(for: hole.number)
+    }
+
+    private var wolfChoiceIcon: String {
+        vm.wolfChoiceIcon(for: hole.number)
     }
 
     private func scoreColor(gross: Int, par: Int, strokes: Int) -> Color {

@@ -49,14 +49,25 @@ create table public.scores (
     gross_strokes integer not null
 );
 
+create table public.wolf_selections (
+    id text primary key,
+    round_id text not null references public.rounds(id) on delete cascade,
+    hole_number integer not null,
+    wolf_player_id text not null references public.players(id) on delete cascade,
+    partner_player_id text references public.players(id) on delete set null,
+    choice text not null
+);
+
 create index players_round_id_idx on public.players(round_id);
 create index scores_round_id_idx on public.scores(round_id);
+create index wolf_selections_round_id_idx on public.wolf_selections(round_id);
 
 grant usage on schema public to anon, authenticated;
 grant select, insert, update, delete on public.rounds to anon, authenticated;
 grant select, insert, update, delete on public.players to anon, authenticated;
 grant select, insert, update, delete on public.scores to anon, authenticated;
+grant select, insert, update, delete on public.wolf_selections to anon, authenticated;
 
-For quick testing, disable Row Level Security on these three tables.
+For quick testing, disable Row Level Security on these four tables.
 Before real beta/public use, turn RLS back on and add proper policies.
 */
