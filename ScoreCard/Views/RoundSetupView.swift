@@ -181,12 +181,18 @@ struct RoundSetupView: View {
                                     .font(.caption).foregroundStyle(.secondary)
                             }
                             Spacer()
-                            if format.requiresTeams, let t = p.teamNumber {
-                                Text("Team \(t)")
-                                    .font(.caption)
-                                    .padding(.horizontal, 8).padding(.vertical, 3)
-                                    .background(t == 1 ? Color.blue.opacity(0.15) : Color.red.opacity(0.15))
-                                    .clipShape(Capsule())
+                            if format.requiresTeams, let teamNumber = p.teamNumber {
+                                HStack(spacing: 4) {
+                                    Circle()
+                                        .fill(TeamColorChoice.color(for: teamNumber))
+                                        .frame(width: 8, height: 8)
+                                    Text(TeamColorChoice.name(for: teamNumber))
+                                }
+                                .font(.caption)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 3)
+                                .background(TeamColorChoice.color(for: teamNumber).opacity(0.15))
+                                .clipShape(Capsule())
                             }
                             Image(systemName: "chevron.right")
                                 .font(.caption)
@@ -206,7 +212,7 @@ struct RoundSetupView: View {
                 Text("Players (\(players.count))")
             } footer: {
                 if format.requiresTeams {
-                    Text("Assign players to Team 1 or Team 2.")
+                    Text("Choose two team colors. Team games need exactly two players on each selected color.")
                 }
             }
 
@@ -217,7 +223,7 @@ struct RoundSetupView: View {
                         .frame(maxWidth: .infinity)
                 } footer: {
                     if format.requiresTeams && !hasValidTeamAssignments {
-                        Text("Team games need exactly two players on Team 1 and two players on Team 2.")
+                        Text("Team games need exactly two players on each of two selected colors.")
                     }
                 }
             }
@@ -258,8 +264,10 @@ struct RoundSetupView: View {
 
     private var hasValidTeamAssignments: Bool {
         guard format.requiresTeams else { return true }
-        return players.filter { $0.teamNumber == 1 }.count == 2 &&
-            players.filter { $0.teamNumber == 2 }.count == 2
+        let selectedTeams = Array(Set(players.compactMap(\.teamNumber)))
+        return selectedTeams.count == 2 && selectedTeams.allSatisfy { teamNumber in
+            players.filter { $0.teamNumber == teamNumber }.count == 2
+        }
     }
 
     // MARK: - Step 2: Confirm
@@ -277,7 +285,14 @@ struct RoundSetupView: View {
             Section("Players") {
                 ForEach(players) { p in
                     HStack {
-                        Text(p.name)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(p.name)
+                            if format.requiresTeams, let teamNumber = p.teamNumber {
+                                Label(TeamColorChoice.name(for: teamNumber), systemImage: "circle.fill")
+                                    .font(.caption)
+                                    .foregroundStyle(TeamColorChoice.color(for: teamNumber))
+                            }
+                        }
                         Spacer()
                         Text("CH: \(Player.computeCourseHandicap(index: p.handicapIndex, slope: slopeRating, rating: courseRating, par: par))")
                             .foregroundStyle(.secondary)
@@ -428,6 +443,30 @@ struct DraftPlayer: Identifiable {
     var teamNumber: Int?
 }
 
+// MARK: - Team Colors
+
+struct TeamColorChoice: Identifiable {
+    let id: Int
+    let name: String
+    let color: Color
+
+    static let all: [TeamColorChoice] = [
+        TeamColorChoice(id: 1, name: "Red", color: .red),
+        TeamColorChoice(id: 2, name: "Blue", color: .blue),
+        TeamColorChoice(id: 3, name: "Green", color: .green),
+        TeamColorChoice(id: 4, name: "Yellow", color: .yellow),
+        TeamColorChoice(id: 5, name: "Purple", color: .purple)
+    ]
+
+    static func name(for id: Int) -> String {
+        all.first { $0.id == id }?.name ?? "Team \(id)"
+    }
+
+    static func color(for id: Int) -> Color {
+        all.first { $0.id == id }?.color ?? .secondary
+    }
+}
+
 // MARK: - Add Player Sheet
 
 struct AddPlayerSheet: View {
@@ -453,11 +492,14 @@ struct AddPlayerSheet: View {
 
                 if format.requiresTeams {
                     Section("Team") {
-                        Picker("Team", selection: $teamNumber) {
-                            Text("Team 1").tag(1)
-                            Text("Team 2").tag(2)
+                        Picker("Team Color", selection: $teamNumber) {
+                            ForEach(TeamColorChoice.all) { choice in
+                                Label(choice.name, systemImage: "circle.fill")
+                                    .foregroundStyle(choice.color)
+                                    .tag(choice.id)
+                            }
                         }
-                        .pickerStyle(.segmented)
+                        .pickerStyle(.menu)
                     }
                 }
             }
@@ -520,11 +562,14 @@ struct EditPlayerSheet: View {
 
                 if format.requiresTeams {
                     Section("Team") {
-                        Picker("Team", selection: $teamNumber) {
-                            Text("Team 1").tag(1)
-                            Text("Team 2").tag(2)
+                        Picker("Team Color", selection: $teamNumber) {
+                            ForEach(TeamColorChoice.all) { choice in
+                                Label(choice.name, systemImage: "circle.fill")
+                                    .foregroundStyle(choice.color)
+                                    .tag(choice.id)
+                            }
                         }
-                        .pickerStyle(.segmented)
+                        .pickerStyle(.menu)
                     }
                 }
 

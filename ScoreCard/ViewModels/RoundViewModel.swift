@@ -279,25 +279,35 @@ final class RoundViewModel: ObservableObject {
     private func computeBestBall() -> [String: String] {
         guard let round else { return [:] }
         let holes = round.holeList
-        let team1 = players.filter { $0.teamNumber == 1 }
-        let team2 = players.filter { $0.teamNumber == 2 }
-        var t1Wins = 0, t2Wins = 0
+        let teams = activeTeamNumbers()
+        guard teams.count >= 2 else { return [:] }
+        let firstTeamNumber = teams[0]
+        let secondTeamNumber = teams[1]
+        let firstTeam = players.filter { $0.teamNumber == firstTeamNumber }
+        let secondTeam = players.filter { $0.teamNumber == secondTeamNumber }
+        var firstWins = 0, secondWins = 0
 
         for hole in holes {
-            let t1Best = team1.compactMap { netScore(playerID: $0.id, hole: hole.number) }.min()
-            let t2Best = team2.compactMap { netScore(playerID: $0.id, hole: hole.number) }.min()
-            guard let b1 = t1Best, let b2 = t2Best else { continue }
-            if b1 < b2 { t1Wins += 1 } else if b2 < b1 { t2Wins += 1 }
+            let firstBest = firstTeam.compactMap { netScore(playerID: $0.id, hole: hole.number) }.min()
+            let secondBest = secondTeam.compactMap { netScore(playerID: $0.id, hole: hole.number) }.min()
+            guard let b1 = firstBest, let b2 = secondBest else { continue }
+            if b1 < b2 { firstWins += 1 } else if b2 < b1 { secondWins += 1 }
         }
 
-        return ["Team 1": "\(t1Wins) holes", "Team 2": "\(t2Wins) holes"]
+        return [
+            teamColorName(firstTeamNumber): "\(firstWins) holes",
+            teamColorName(secondTeamNumber): "\(secondWins) holes"
+        ]
     }
 
-    private func vegasTeamTotals() -> (team1Diff: Int, team2Diff: Int, team1Raw: Int, team2Raw: Int) {
-        guard let round else { return (0, 0, 0, 0) }
+    private func vegasTeamTotals() -> (team1Number: Int, team2Number: Int, team1Diff: Int, team2Diff: Int, team1Raw: Int, team2Raw: Int) {
+        guard let round else { return (1, 2, 0, 0, 0, 0) }
+        let teams = activeTeamNumbers()
+        let firstTeamNumber = teams.first ?? 1
+        let secondTeamNumber = teams.dropFirst().first ?? 2
         let holes = round.holeList
-        let team1 = players.filter { $0.teamNumber == 1 }.sorted { $0.name < $1.name }
-        let team2 = players.filter { $0.teamNumber == 2 }.sorted { $0.name < $1.name }
+        let team1 = players.filter { $0.teamNumber == firstTeamNumber }.sorted { $0.name < $1.name }
+        let team2 = players.filter { $0.teamNumber == secondTeamNumber }.sorted { $0.name < $1.name }
         var t1Diff = 0, t2Diff = 0, t1Raw = 0, t2Raw = 0
         for hole in holes {
             let t1Scores = team1.compactMap { grossScore(playerID: $0.id, hole: hole.number) }.sorted()
@@ -310,20 +320,22 @@ final class RoundViewModel: ObservableObject {
             if t1Val < t2Val { t1Diff += (t2Val - t1Val) }
             else if t2Val < t1Val { t2Diff += (t1Val - t2Val) }
         }
-        return (t1Diff, t2Diff, t1Raw, t2Raw)
+        return (firstTeamNumber, secondTeamNumber, t1Diff, t2Diff, t1Raw, t2Raw)
     }
 
     private func computeVegas() -> [String: String] {
         let t = vegasTeamTotals()
+        let firstTeamName = teamColorName(t.team1Number)
+        let secondTeamName = teamColorName(t.team2Number)
         let net = t.team1Diff - t.team2Diff
         let standing: String
-        if net > 0      { standing = "Team 1 +\(net)" }
-        else if net < 0 { standing = "Team 2 +\(abs(net))" }
+        if net > 0      { standing = "\(firstTeamName) +\(net)" }
+        else if net < 0 { standing = "\(secondTeamName) +\(abs(net))" }
         else            { standing = "Even" }
         return [
-            "Standing":     standing,
-            "Team 1 Total": t.team1Raw > 0 ? "\(t.team1Raw)" : "-",
-            "Team 2 Total": t.team2Raw > 0 ? "\(t.team2Raw)" : "-"
+            "Standing": standing,
+            "\(firstTeamName) Total": t.team1Raw > 0 ? "\(t.team1Raw)" : "-",
+            "\(secondTeamName) Total": t.team2Raw > 0 ? "\(t.team2Raw)" : "-"
         ]
     }
 
@@ -447,14 +459,19 @@ final class RoundViewModel: ObservableObject {
 
     private func bestBallActivitySummary() -> ActivitySummary {
         let results = computeBestBall()
-        let team1Value = results["Team 1"] ?? "0 holes"
-        let team2Value = results["Team 2"] ?? "0 holes"
-        let team1Wins = leadingInteger(in: team1Value)
-        let team2Wins = leadingInteger(in: team2Value)
+        let teams = activeTeamNumbers()
+        let firstTeamNumber = teams.first ?? 1
+        let secondTeamNumber = teams.dropFirst().first ?? 2
+        let firstTeamName = teamColorName(firstTeamNumber)
+        let secondTeamName = teamColorName(secondTeamNumber)
+        let firstValue = results[firstTeamName] ?? "0 holes"
+        let secondValue = results[secondTeamName] ?? "0 holes"
+        let firstWins = leadingInteger(in: firstValue)
+        let secondWins = leadingInteger(in: secondValue)
 
         return (
-            leading: (teamLabel(1), team1Value, team1Wins > team2Wins),
-            trailing: (teamLabel(2), team2Value, team2Wins > team1Wins),
+            leading: (teamLabel(firstTeamNumber), firstValue, firstWins > secondWins),
+            trailing: (teamLabel(secondTeamNumber), secondValue, secondWins > firstWins),
             rows: resultRows(from: results, highlightedValuesContaining: "")
         )
     }
@@ -462,16 +479,18 @@ final class RoundViewModel: ObservableObject {
     private func vegasActivitySummary() -> ActivitySummary {
         let totals = vegasTeamTotals()
         let results = computeVegas()
-        let team1Value = "+\(totals.team1Diff)"
-        let team2Value = "+\(totals.team2Diff)"
+        let firstTeamName = teamColorName(totals.team1Number)
+        let secondTeamName = teamColorName(totals.team2Number)
+        let firstValue = "+\(totals.team1Diff)"
+        let secondValue = "+\(totals.team2Diff)"
 
         return (
-            leading: (teamLabel(1), team1Value, totals.team1Diff > totals.team2Diff),
-            trailing: (teamLabel(2), team2Value, totals.team2Diff > totals.team1Diff),
+            leading: (teamLabel(totals.team1Number), firstValue, totals.team1Diff > totals.team2Diff),
+            trailing: (teamLabel(totals.team2Number), secondValue, totals.team2Diff > totals.team1Diff),
             rows: [
                 scoreRow(id: "standing", label: "Standing", value: results["Standing"] ?? "Even", isHighlighted: true),
-                scoreRow(id: "team1Total", label: "T1 Total", value: results["Team 1 Total"] ?? "-", isHighlighted: false),
-                scoreRow(id: "team2Total", label: "T2 Total", value: results["Team 2 Total"] ?? "-", isHighlighted: false)
+                scoreRow(id: "team1Total", label: "\(firstTeamName) Total", value: results["\(firstTeamName) Total"] ?? "-", isHighlighted: false),
+                scoreRow(id: "team2Total", label: "\(secondTeamName) Total", value: results["\(secondTeamName) Total"] ?? "-", isHighlighted: false)
             ]
         )
     }
@@ -519,7 +538,24 @@ final class RoundViewModel: ObservableObject {
             .filter { $0.teamNumber == teamNumber }
             .map { $0.name }
             .joined(separator: " & ")
-        return names.isEmpty ? "Team \(teamNumber)" : names
+        return names.isEmpty ? teamColorName(teamNumber) : names
+    }
+
+    private func activeTeamNumbers() -> [Int] {
+        let assigned = Set(players.compactMap(\.teamNumber)).sorted()
+        if assigned.count >= 2 { return Array(assigned.prefix(2)) }
+        return [1, 2]
+    }
+
+    private func teamColorName(_ teamNumber: Int) -> String {
+        switch teamNumber {
+        case 1: return "Red"
+        case 2: return "Blue"
+        case 3: return "Green"
+        case 4: return "Yellow"
+        case 5: return "Purple"
+        default: return "Team \(teamNumber)"
+        }
     }
 
     private func leadingInteger(in value: String) -> Int {

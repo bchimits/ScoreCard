@@ -143,9 +143,10 @@ struct ScoreboardView: View {
                 }
 
                 if vm.round?.format == .vegas {
-                    vegasTeamRow(teamNumber: 1)
-                    Divider()
-                    vegasTeamRow(teamNumber: 2)
+                    ForEach(vegasTeamNumbers, id: \.self) { teamNumber in
+                        vegasTeamRow(teamNumber: teamNumber)
+                        Divider()
+                    }
                 }
             }
             .padding(.horizontal, 4)
@@ -177,11 +178,16 @@ struct ScoreboardView: View {
 
     private func vegasTeamRow(teamNumber: Int) -> some View {
         HStack(spacing: 0) {
-            Text("Team \(teamNumber)")
-                .font(.caption.bold())
-                .lineLimit(1)
-                .frame(width: 90, alignment: .leading)
-                .padding(.horizontal, 6)
+            HStack(spacing: 4) {
+                Circle()
+                    .fill(teamColor(for: teamNumber))
+                    .frame(width: 7, height: 7)
+                Text(teamName(for: teamNumber))
+                    .lineLimit(1)
+            }
+            .font(.caption.bold())
+            .frame(width: 90, alignment: .leading)
+            .padding(.horizontal, 6)
 
             ForEach(vm.round?.holeList ?? []) { hole in
                 Text(vegasScoreText(teamNumber: teamNumber, holeNumber: hole.number))
@@ -245,8 +251,14 @@ struct ScoreboardView: View {
         return values.reduce(0, +)
     }
 
+    private var vegasTeamNumbers: [Int] {
+        let assigned = Set(vm.players.compactMap(\.teamNumber)).sorted()
+        if assigned.count >= 2 { return Array(assigned.prefix(2)) }
+        return [1, 2]
+    }
+
     private func opposingTeamNumber(for teamNumber: Int) -> Int {
-        teamNumber == 1 ? 2 : 1
+        vegasTeamNumbers.first { $0 != teamNumber } ?? (teamNumber == 1 ? 2 : 1)
     }
 
     private func vegasPlayers(teamNumber: Int) -> [Player] {
@@ -255,9 +267,32 @@ struct ScoreboardView: View {
             return assignedPlayers
         }
 
-        let startIndex = teamNumber == 1 ? 0 : 2
+        guard let teamIndex = vegasTeamNumbers.firstIndex(of: teamNumber) else { return assignedPlayers }
+        let startIndex = teamIndex * 2
         guard vm.players.count >= startIndex + 2 else { return assignedPlayers }
         return Array(vm.players[startIndex..<(startIndex + 2)])
+    }
+
+    private func teamName(for teamNumber: Int) -> String {
+        switch teamNumber {
+        case 1: return "Red"
+        case 2: return "Blue"
+        case 3: return "Green"
+        case 4: return "Yellow"
+        case 5: return "Purple"
+        default: return "Team \(teamNumber)"
+        }
+    }
+
+    private func teamColor(for teamNumber: Int) -> Color {
+        switch teamNumber {
+        case 1: return .red
+        case 2: return .blue
+        case 3: return .green
+        case 4: return .yellow
+        case 5: return .purple
+        default: return .secondary
+        }
     }
 
     private func scoreCellView(gross: Int?, par: Int, strokes: Int) -> some View {
