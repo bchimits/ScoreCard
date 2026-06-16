@@ -212,18 +212,17 @@ struct RoundSetupView: View {
                 Text("Players (\(players.count))")
             } footer: {
                 if format.requiresTeams {
-                    Text("Choose two team colors. Team games need exactly two players on each selected color.")
+                    Text("You can start the round now to get a join code, then assign team colors after everyone joins.")
                 }
             }
 
-            if players.count >= format.minimumPlayers {
+            if canReviewRound {
                 Section {
                     Button("Next: Review") { step = 2 }
-                        .disabled(!hasValidTeamAssignments)
                         .frame(maxWidth: .infinity)
                 } footer: {
                     if format.requiresTeams && !hasValidTeamAssignments {
-                        Text("Team games need exactly two players on each of two selected colors.")
+                        Text("Team colors can be completed later from the scoreboard after players join.")
                     }
                 }
             }
@@ -262,6 +261,13 @@ struct RoundSetupView: View {
         return $players[index]
     }
 
+    private var canReviewRound: Bool {
+        if format.requiresTeams {
+            return !players.isEmpty
+        }
+        return players.count >= format.minimumPlayers
+    }
+
     private var hasValidTeamAssignments: Bool {
         guard format.requiresTeams else { return true }
         let selectedTeams = Array(Set(players.compactMap(\.teamNumber)))
@@ -297,6 +303,14 @@ struct RoundSetupView: View {
                         Text("CH: \(Player.computeCourseHandicap(index: p.handicapIndex, slope: slopeRating, rating: courseRating, par: par))")
                             .foregroundStyle(.secondary)
                     }
+                }
+            }
+
+            if format.requiresTeams && !hasValidTeamAssignments {
+                Section("Teams") {
+                    Label("Roster and team colors can be finished after players join with the code.", systemImage: "person.2.badge.gearshape")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
                 }
             }
 
